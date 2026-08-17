@@ -53,7 +53,7 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true);
-  const query = { size: process.env.DESKFLY_SIZE || '18' };
+  const query = { size: process.env.DESKFLY_SIZE || '22' };
   if (process.env.DESKFLY_POSE) {
     query.pose = process.env.DESKFLY_POSE;
     query.zoom = process.env.DESKFLY_ZOOM || '1';

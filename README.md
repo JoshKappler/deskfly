@@ -8,8 +8,10 @@ The desktop is its 3D world, an alternate reality of your actual desktop:
 the screen plane is a grass meadow, every window edge is a line of low-poly
 trees with landable branches (drag a window and its grove slides with it),
 the screen borders are the forest ring around it, berries grow where food
-spawns, a pond reflects the sky, and your cursor prowls the meadow as a
-dark mound of earth. One three.js scene renders that
+spawns (marked by small berry dots on the real desktop, the one thing both
+realities show, so a fly sitting on the ground is always sitting at food),
+a pond reflects the sky, and your cursor prowls the meadow as a dark mound
+of earth. One three.js scene renders that
 world twice: a cube camera at the fly's position becomes the 360-degree
 luminance panorama its real retinotopic eye map receives (11,118 cells at
 their measured positions), and a perspective fly-cam shows you the same

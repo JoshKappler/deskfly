@@ -20,12 +20,15 @@ const SIDE_MOUTH = [0.08, 0.63];
 function mipTo(img, tw, th) {
   let src = img;
   let w = src.width, h = src.height;
+  let first = true;
   while (w / 2 >= tw * 2 && h / 2 >= th * 2) {
     const c = document.createElement('canvas');
     c.width = Math.round(w / 2);
     c.height = Math.round(h / 2);
     const g = c.getContext('2d');
     g.imageSmoothingQuality = 'high';
+    // lift the gray specimen photos so the fly reads against dark desktops
+    if (first) { g.filter = 'brightness(1.3) saturate(1.45) contrast(1.05)'; first = false; }
     g.drawImage(src, 0, 0, c.width, c.height);
     src = c; w = c.width; h = c.height;
   }
@@ -34,6 +37,7 @@ function mipTo(img, tw, th) {
   out.height = Math.max(1, Math.round(th));
   const g = out.getContext('2d');
   g.imageSmoothingQuality = 'high';
+  if (first) g.filter = 'brightness(1.3) saturate(1.45) contrast(1.05)';
   g.drawImage(src, 0, 0, out.width, out.height);
   return out;
 }
@@ -110,6 +114,8 @@ class PhotoFly {
     const mB = this.manifest.body, mH = this.manifest.head;
     const L = this.bodyLen;
     ctx.imageSmoothingQuality = 'high';
+    ctx.shadowColor = 'rgba(255,244,214,0.55)'; // light halo against dark desktops
+    ctx.shadowBlur = L * 0.14;
     const headX = -L / 2 + (mB.w - OVERLAP_SRC) * this.pxToPt;
     ctx.drawImage(this.parts.head,
       headX, -mH.h * this.pxToPt / 2,
@@ -117,6 +123,8 @@ class PhotoFly {
     ctx.drawImage(this.parts.body,
       -L / 2, -mB.h * this.pxToPt / 2,
       mB.w * this.pxToPt, mB.h * this.pxToPt);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
 
     ctx.save();
     ctx.scale(this.unit, this.unit);
@@ -141,7 +149,11 @@ class PhotoFly {
     const x0 = -drawnW * SIDE_CENTER_X;
     const y0 = -drawnH * SIDE_FEET_Y;
     ctx.imageSmoothingQuality = 'high';
+    ctx.shadowColor = 'rgba(255,244,214,0.55)';
+    ctx.shadowBlur = drawnW * 0.1;
     ctx.drawImage(this.parts.side, x0, y0, drawnW, drawnH);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
 
     const sx = (fx) => x0 + fx * drawnW;
     const sy = (fy) => y0 + fy * drawnH;

@@ -51,7 +51,7 @@ class Fly {
     this.dartT = 0;
     this.perch = null;      // { ledge, u, side }
     this.perchClock = 0;
-    this.restless = rand(90, 150);
+    this.restless = rand(45, 90);
     this.subT = 0;
     this.walkDir = 1;
     this.loomT = 99;
@@ -83,6 +83,7 @@ class Fly {
       this.drive[key] = Math.max(0, this.ema[key] - this.slow[key]);
     }
     const brainLive = env.brain.vision && env.brain.age() < 2;
+    this.hungerNow = env.brain.hunger !== undefined ? env.brain.hunger : 0.7;
 
     const grounded = this.state === 'PERCH' || this.state === 'WALK'
       || this.state === 'GROOM' || this.state === 'FEED';
@@ -274,20 +275,19 @@ class Fly {
       const w = (KIND_WEIGHT[l.kind] || 1) / (1 + d / 500);
       cands.push({ ledge: l, u, w, alt });
     }
-    // ground spots; food smells better the hungrier it is (attraction
-    // heuristic scaled by the brain's hunger state, not a DN readout)
+    // ground landings only happen at food (visible berries), never at a bare
+    // random spot; the pull scales with the brain's hunger state
     const hunger = env.brain.hunger !== undefined ? env.brain.hunger : 0.7;
-    for (let i = 0; i < 5; i++) {
-      const nearFood = env.food.length && i < 2;
-      const f = nearFood ? env.food[(Math.random() * env.food.length) | 0] : null;
-      const gx = f ? f.x + rand(-30, 30) : rand(60, env.w - 60);
-      const gy = f ? f.y + rand(-30, 30) : rand(60, env.h - 60);
+    for (let i = 0; i < 3 && env.food.length; i++) {
+      const f = env.food[(Math.random() * env.food.length) | 0];
+      const gx = f.x + rand(-22, 22);
+      const gy = f.y + rand(-22, 22);
       if (Math.hypot(gx - c.x, gy - c.y) < 160) continue;
       cands.push({
         ledge: { dir: 'ground', x: gx, y: gy, kind: 'ground' },
         u: 0,
         alt: 2,
-        w: (f ? 1.5 + 6 * hunger : KIND_WEIGHT.ground) / (1 + Math.hypot(gx - this.x, gy - this.y) / 500),
+        w: (1.5 + 6 * hunger) / (1 + Math.hypot(gx - this.x, gy - this.y) / 500),
       });
     }
     if (!cands.length) return null;
@@ -346,7 +346,9 @@ class Fly {
     this.vx = 0; this.vy = 0;
     if (k >= 1) {
       this.state = 'PERCH'; this.t = 0;
-      this.perchClock = 0; this.restless = rand(90, 150);
+      this.perchClock = 0;
+      // a hungry fly will not sit long; a fed one lingers
+      this.restless = rand(35, 80) * (1.5 - (this.hungerNow || 0.7));
       this.heading = dir;
     }
   }

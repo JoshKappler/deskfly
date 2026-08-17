@@ -106,6 +106,24 @@ fly.vis = vis;
 const photo = loadPhotoFly(path.join(__dirname, '..'), bodyLen * (pose ? fly.pinScale : 1), dpr);
 if (photo && pose) fly.pinScale = 1;
 
+let foodPrev = [];
+function drawBerries() {
+  const T = Math.PI * 2;
+  for (const f of foodPrev) ctx.clearRect(f.x - 14, f.y - 14, 28, 28);
+  for (const f of env.food) {
+    for (let k = 0; k < 3; k++) {
+      const a = k * 2.1 + (f.x + f.y) * 0.01;
+      const bx = f.x + Math.cos(a) * f.r * 0.35;
+      const by = f.y + Math.sin(a) * f.r * 0.35;
+      ctx.fillStyle = '#8e2430';
+      ctx.beginPath(); ctx.arc(bx, by, f.r * 0.32, 0, T); ctx.fill();
+      ctx.fillStyle = 'rgba(255,208,192,0.85)';
+      ctx.beginPath(); ctx.arc(bx - f.r * 0.1, by - f.r * 0.1, f.r * 0.09, 0, T); ctx.fill();
+    }
+  }
+  foodPrev = env.food.map((f) => ({ x: f.x, y: f.y }));
+}
+
 let prev = null;
 let last = performance.now();
 function frame(now) {
@@ -119,6 +137,7 @@ function frame(now) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const pad = 160;
     if (prev) ctx.clearRect(prev.x - pad, prev.y - pad, pad * 2, pad * 2);
+    drawBerries();
     const pz = fly.pose();
     if (!photo || !photo.draw(ctx, pz)) drawFly(ctx, pz, vis);
     prev = { x: fly.x, y: fly.y };
