@@ -3,15 +3,22 @@ const { Worker } = require('worker_threads');
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { World, renderPano } = require('./world.js');
 
 const HELPER = path.join(__dirname, '..', 'helper', 'perchscan');
 const BRAIN_DIR = path.join(__dirname, '..', 'brain');
+const PANO_W = 180;
+const PANO_H = 90;
 
 let win = null;
 let tray = null;
+let viewer = null;
 let brainWorker = null;
 let paused = false;
 let brainStatus = 'starting';
+let world = null;
+let flyState = { x: 400, y: 400, heading: 0, z: 1 };
+let lastRates = null;
 
 function createWindow() {
   const d = screen.getPrimaryDisplay();
@@ -50,6 +57,7 @@ function updateTray() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: paused ? 'Resume' : 'Pause', click: togglePause },
+    { label: 'What the fly sees', click: toggleViewer },
     { label: `Brain: ${brainStatus}`, enabled: false },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() },
@@ -70,7 +78,10 @@ function startTray() {
 
 function startCursorFeed() {
   setInterval(() => {
-    if (win && !paused) win.webContents.send('cursor', screen.getCursorScreenPoint());
+    if (!win || paused) return;
+    const c = screen.getCursorScreenPoint();
+    world.cursor = c;
+    win.webContents.send('cursor', c);
   }, 33);
 }
 
@@ -83,23 +94,102 @@ function startPerchScan() {
     if (!win || paused) return;
     execFile(HELPER, { timeout: 4000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
       if (err || !win) return;
-      try { win.webContents.send('perches', JSON.parse(out)); } catch {}
+      try {
+        const parsed = JSON.parse(out);
+        world.setLedges(parsed.ledges || []);
+        win.webContents.send('perches', parsed);
+      } catch {}
     });
   };
   setTimeout(scan, 1500);
   setInterval(scan, 2500);
 }
 
+function sendWorld() {
+  if (win) win.webContents.send('world', { food: world.food });
+}
+
+function startFood() {
+  const d = screen.getPrimaryDisplay();
+  const spawn = () => {
+    if (world.food.length >= 3) return;
+    world.food.push({
+      x: 60 + Math.random() * (d.bounds.width - 120),
+      y: 80 + Math.random() * (d.bounds.height - 160),
+      r: 7,
+      amount: 1,
+    });
+    sendWorld();
+  };
+  ipcMain.on('ate', (_e, index, amt) => {
+    const f = world.food[index];
+    if (!f) return;
+    f.amount -= amt;
+    if (f.amount <= 0) world.food.splice(index, 1);
+    else f.r = 4 + 3 * f.amount;
+    sendWorld();
+  });
+  spawn();
+  setInterval(spawn, 25000);
+}
+
+// the fly's visual world: rendered as a spherical panorama for the eye
+function startPanoFeed() {
+  setInterval(() => {
+    if (!brainWorker || paused) return;
+    const data = new Uint8Array(PANO_W * PANO_H);
+    renderPano(world, flyState, { w: PANO_W, h: PANO_H, data }, false);
+    brainWorker.postMessage({ type: 'pano', data: data.buffer, w: PANO_W, h: PANO_H }, [data.buffer]);
+  }, Math.round(1000 / 15));
+}
+
+function toggleViewer() {
+  if (viewer) { viewer.close(); return; }
+  viewer = new BrowserWindow({
+    width: 736,
+    height: 430,
+    title: 'deskfly: what the fly sees',
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  viewer.loadFile(path.join(__dirname, 'viewer.html'));
+  viewer.on('closed', () => { viewer = null; });
+  const timer = setInterval(() => {
+    if (!viewer) { clearInterval(timer); return; }
+    viewer.webContents.send('viewstate', {
+      walls: world.walls,
+      food: world.food,
+      cursor: world.cursor,
+      fly: flyState,
+      brain: lastRates,
+    });
+  }, 66);
+}
+
 function startBrain() {
   brainWorker = new Worker(path.join(BRAIN_DIR, 'worker.js'), {
     workerData: { dataDir: path.join(BRAIN_DIR, 'data') },
   });
+  let lastLog = 0;
   brainWorker.on('message', (m) => {
     if (m.type === 'status') { brainStatus = m.text; updateTray(); console.log('[brain]', m.text); }
+    if (m.type === 'rates') {
+      lastRates = m;
+      if (process.env.DESKFLY_LOG_RATES && Date.now() - lastLog > 2000) {
+        lastLog = Date.now();
+        const r = Object.fromEntries(Object.entries(m.rates).map(([k, v]) => [k, +v.toFixed(1)]));
+        console.log('[rates]', JSON.stringify(r), 'speed', m.simSpeed.toFixed(2),
+          'active', m.activeN, 'fly', flyState.state,
+          Math.round(flyState.x) + ',' + Math.round(flyState.y));
+      }
+    }
     if (win) win.webContents.send('brain', m);
   });
   brainWorker.on('error', (e) => { brainStatus = `error: ${e.message}`; updateTray(); });
   ipcMain.on('stim', (_e, s) => { if (brainWorker) brainWorker.postMessage({ type: 'stim', ...s }); });
+  ipcMain.on('fly', (_e, s) => {
+    flyState = s;
+    if (brainWorker) brainWorker.postMessage({ type: 'fly', ...s });
+  });
 }
 
 function startCapture() {
@@ -122,12 +212,24 @@ function startCapture() {
 
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
+  const d = screen.getPrimaryDisplay();
+  world = new World(d.bounds.width, d.bounds.height);
   createWindow();
   startTray();
   startCursorFeed();
   startPerchScan();
   startBrain();
+  startFood();
+  startPanoFeed();
   if (process.env.DESKFLY_CAPTURE) startCapture();
+  if (process.env.DESKFLY_VIEWER_SHOT) {
+    setTimeout(toggleViewer, 3000);
+    setTimeout(async () => {
+      if (!viewer) return;
+      const img = await viewer.webContents.capturePage();
+      fs.writeFileSync(process.env.DESKFLY_VIEWER_SHOT, img.toPNG());
+    }, 9000);
+  }
 });
 
 app.on('window-all-closed', () => app.quit());

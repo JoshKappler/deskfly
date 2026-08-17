@@ -28,6 +28,10 @@ class Sim {
     this.stims = [];
     this.totalSpikes = 0;
     this.step = 0;
+    // spontaneous floor: tiny subthreshold kicks spread uniformly, the
+    // standard stand-in for the in-vivo background a pure LIF net lacks
+    this.noiseW = params.w_syn_mv * (params.bg_w_factor || 0);
+    this.noiseLambda = this.N * (params.bg_per_cell_hz || 0) * this.dt / 1000;
   }
 
   activate(i) {
@@ -35,6 +39,14 @@ class Sim {
       this.isActive[i] = 1;
       this.active[this.activeN++] = i;
     }
+  }
+
+  // force a spike (sensory cells driven from outside the connectome)
+  injectSpike(i) {
+    this.spikeCount[i]++;
+    this.totalSpikes++;
+    const out = this.ring[(this.head + this.delaySteps) % this.ring.length];
+    for (let k = this.off[i]; k < this.off[i + 1]; k++) out.push(this.tgt[k], this.w[k]);
   }
 
   // Poisson drive onto a neuron set, Shiu-style: rate hz, weight w_syn * stim_w_factor
@@ -49,6 +61,16 @@ class Sim {
 
   tick() {
     const p = this.p;
+    if (this.noiseLambda) {
+      let n = this.noiseLambda > 8
+        ? Math.max(0, Math.round(this.noiseLambda + Math.sqrt(this.noiseLambda) * (Math.random() * 2 - 1) * 1.7))
+        : (Math.random() < this.noiseLambda ? 1 : 0) + (Math.random() < this.noiseLambda / 2 ? 1 : 0);
+      for (; n > 0; n--) {
+        const i = (Math.random() * this.N) | 0;
+        this.g[i] += this.noiseW;
+        this.activate(i);
+      }
+    }
     const bucket = this.ring[this.head];
     for (let k = 0; k < bucket.length; k += 2) {
       const i = bucket[k];

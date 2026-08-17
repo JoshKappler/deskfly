@@ -13,14 +13,21 @@ const FILES = [
   'neurons.csv.gz',
   'consolidated_cell_types.csv.gz',
 ];
+// Schlegel et al. annotations: cell types, sides, and neuron positions
+// (positions build the photoreceptor eye map)
+const ANNOTATIONS = {
+  url: 'https://raw.githubusercontent.com/flyconnectome/flywire_annotations/main/supplemental_files/Supplemental_file1_neuron_annotations.tsv',
+  name: 'annotations.tsv',
+};
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const RAW = path.join(ROOT, 'brain', 'data', 'raw');
 fs.mkdirSync(RAW, { recursive: true });
 
-for (const name of FILES) {
+const jobs = FILES.map((name) => ({ name, url: BASE + name }));
+jobs.push({ name: ANNOTATIONS.name, url: ANNOTATIONS.url });
+for (const { name, url } of jobs) {
   const dest = path.join(RAW, name);
-  const url = BASE + name;
   const head = await fetch(url, { method: 'HEAD' });
   if (!head.ok) throw new Error(`HEAD ${url} -> ${head.status}`);
   const size = Number(head.headers.get('content-length') || 0);

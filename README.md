@@ -1,53 +1,57 @@
 # deskfly
 
-A housefly that lives on your screen. It buzzes around, lands on window
-edges, screen borders and text inputs, grooms, walks, and startles away from
-your cursor. Its startle reflex runs on the real thing: the complete FlyWire
-connectome of an adult fruit fly brain (139,255 neurons, 3.87M connections)
-simulated as a leaky integrate-and-fire network after Shiu et al. 2024.
-Cursor approaches fly -> looming neurons (LC4, LPLC2) get Poisson drive ->
-the spike cascade reaches the giant fiber escape neurons (DNp01) -> takeoff.
+A housefly that lives on your screen, run by the real FlyWire connectome of
+an adult fruit fly brain: 139,255 neurons, 3.87M connections, simulated as a
+leaky integrate-and-fire network after Shiu et al. 2024.
+
+The desktop is its 3D world: the screen plane is a grass floor, every window
+edge stands on it as a wall it can land on, food appears in the grass, and
+your cursor stalks it as a dark predator. That world is raycast into a
+spherical panorama and fed to the fly's own retinotopic photoreceptor map
+(11,118 cells placed from their real positions), so the optic lobe computes
+motion and looming from what the fly actually sees. Behavior is read out of
+the real command neurons: giant fiber (DNp01) fires -> escape takeoff away
+from the louder LC4/LPLC2 side; DNp09 -> walking bouts; DNa01/02 asymmetry
+-> steering; DNg11 -> grooming (the forelegs rub, then wipe the eyes, in
+side view on a wall top); MDN -> backing up; standing on food drives the
+labellar sugar neurons and the proboscis motor pool answers -> it eats.
+
+Tray menu -> "What the fly sees" opens the colour view of its world with
+live firing rates.
 
 ## Run
 
 ```
 npm install
 npm run build:helper     # Swift scanner for window edges / text inputs
-npm run fetch:brain      # ~54 MB from FlyWire's public bucket
-npm run prep:brain       # pack CSVs into binary arrays
+npm run fetch:brain      # ~86 MB from FlyWire's public bucket + annotations
+npm run prep:brain       # pack into binary arrays + eye map + cell groups
 npm run launch           # start at normal priority via `open`
 ```
 
-Without the brain data the fly still flies; a stub emits the two firing
-rates the behavior reads and the tray shows "stub brain". With it, the tray
-shows "FlyWire live". Quit from the fly menu bar item.
+Without brain data a labeled stub fakes the two rates behavior needs.
+Text-input walls need Accessibility permission; window edges work without.
+Primary display only. Quit from the fly menu bar item.
 
-Text-input landing needs Accessibility permission for the app (System
-Settings -> Privacy & Security -> Accessibility); window edges and screen
-borders work without it. Single display (the primary) for now.
+## Honesty notes, in one place
 
-## Pieces
-
-- `src/` Electron overlay: transparent, click-through, always on top
-- `src/behavior.js` flight physics and the perch/walk/groom/escape states
-- `src/photofly.js` renderer built from real fly photographs (`sprites/`)
-- `src/sprite.js` procedural vector fly, used when sprites are absent
-- `brain/` the LIF simulation (worker thread; idles ~2% CPU, spikes only
-  when stimulated)
-- `helper/perchscan.swift` window edges (occlusion-subtracted) + AX text fields
-- `scripts/sim-smoke.mjs` proves the loom -> giant fiber pathway end to end
-
-## Debug
-
-`DESKFLY_POSE=perch|flight|walk|groom DESKFLY_ZOOM=7 DESKFLY_CAPTURE=1 npm start`
-pins the fly at screen centre and writes /tmp/deskfly-cap.png every 1.5s.
-`DESKFLY_SIZE=<pt>` sets body length (default 18).
+- LIF point neurons, fixed 1.8ms delays, one transmitter sign per neuron
+  (GABA/glutamate inhibitory). No plasticity, no neuromodulation.
+- The retina-to-lamina layer is truncated in FAFB, so luminance-change drive
+  enters at L1-L5 and R7/R8, as rectified-contrast excitation.
+- The sim runs at whatever fraction of real time fits ~25% of one core
+  (typically 0.15-0.35x); reactions are correspondingly delayed.
+- Command neurons carry a weak Poisson "internal state" drive so spontaneous
+  bouts exist; escape, steering direction, and feeding are sensory-driven.
+- Flight paths, landing mechanics and perch choice are body-level heuristics;
+  the brain decides when, what, and which way.
+- `scripts/vision-smoke.mjs` proves panorama -> optic lobe -> giant fiber
+  with no scripted stimulus; `scripts/probe-cascade.mjs` reports layer-by-
+  layer propagation.
 
 ## Data and credits
 
-Connectome: FlyWire public release, snapshot 783, CC BY-NC 4.0. Not
-committed here; `npm run fetch:brain` downloads it. Cite Dorkenwald et al.
-Nature 2024, Schlegel et al. Nature 2024. Model constants: Shiu et al.,
-Nature 2024 (`brain/params.json`); deviations: dt 0.2 ms instead of 0.1,
-a weak random background drive, and event-driven active-set integration.
-Fly photo sources and licenses: `reference/SOURCES.md`.
+Connectome: FlyWire public release 783 (CC BY-NC 4.0), fetched not committed;
+cite Dorkenwald et al. 2024, Schlegel et al. 2024 (annotations), Shiu et al.
+2024 (model constants, `brain/params.json`). Sprite photo sources and
+licenses: `reference/SOURCES.md`.

@@ -10,8 +10,19 @@
   "w_syn_mv": 0.275,
   "stim_w_factor": 250,
   "stim_hz": 150,
-  "bg_hz": 1.0,
-  "bg_w_factor": 20,
-  "bg_size": 200,
-  "inhibitory_nt": ["gaba", "glut"]
+  "bg_per_cell_hz": 0.8,
+  "bg_w_factor": 45,
+  "dn_drive": { "walk": 4, "groom": 3, "mdn": 1, "w_factor": 80 },
+  "inhibitory_nt": ["gaba", "glut"],
+  "vision": {
+    "subsample": 2,
+    "r0_hz": 1.5,
+    "r_gain_hz": 600,
+    "adapt_tau_ms": 400,
+    "ambient": 0.5,
+    "update_ms": 5,
+    "pano_w": 180,
+    "pano_h": 90,
+    "pano_fps": 15
+  }
 }

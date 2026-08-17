@@ -58,6 +58,7 @@ function processEntry(e) {
   const mapY = (y) => working ? y : (y - (e.crop ? e.crop[1] : 0)) * k;
   const sil = e.silhouette ? mapPoly(e.silhouette) : null;
   const masks = (e.maskPolys || []).map(mapPoly);
+  const protects = (e.protectPolys || []).map(mapPoly);
 
   if (process.env.SPRITES_DEBUG) {
     const dbg = Buffer.from(img.toBitmap());
@@ -117,9 +118,17 @@ function processEntry(e) {
           const d = Math.hypot(px[i] - bg[2], px[i + 1] - bg[1], px[i + 2] - bg[0]);
           a = (d - t0) / (t1 - t0);
           a = a < 0 ? 0 : a > 1 ? 1 : a;
+          // translucent parts (wings) keep a floor alpha inside protect polys
+          if (a < 0.55 && protects.some((m) => pointInPoly(x, y, m))) a = Math.max(a, 0.55);
         }
         px[i + 3] = Math.round(a * 255);
       }
+    }
+
+    if (process.env.SPRITES_DEBUG) {
+      let zeros = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] === 0) zeros++;
+      console.log(`  [${e.role}] bg=${bg} matte zeros: ${zeros}/${w * h}`);
     }
 
     // mirror one clean half across the axis for a symmetric subject
@@ -202,6 +211,15 @@ function processEntry(e) {
     px.copy(cut, y * tw * 4, ((y + minY) * w + minX) * 4, ((y + minY) * w + minX + tw) * 4);
   }
 
+  // createFromBitmap expects premultiplied BGRA
+  for (let i = 0; i < cut.length; i += 4) {
+    const a = cut[i + 3] / 255;
+    if (a < 1) {
+      cut[i] = Math.round(cut[i] * a);
+      cut[i + 1] = Math.round(cut[i + 1] * a);
+      cut[i + 2] = Math.round(cut[i + 2] * a);
+    }
+  }
   let out = nativeImage.createFromBitmap(cut, { width: tw, height: th });
   const maxOut = e.maxSize ?? 768;
   if (Math.max(tw, th) > maxOut) {

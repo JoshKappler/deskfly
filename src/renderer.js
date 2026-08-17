@@ -31,15 +31,28 @@ const env = {
   w: innerWidth,
   h: innerHeight,
   ledges: screenLedges(),
+  food: [],
   cursor: { x: -1e4, y: -1e4, vx: 0, vy: 0 },
   brain: {
     rates: {},
     mode: 'starting',
+    vision: false,
     last: 0,
     age() { return performance.now() / 1000 - this.last; },
   },
   stim(name, strength) { ipcRenderer.send('stim', { name, strength }); },
+  ate(index, amt) { ipcRenderer.send('ate', index, amt); },
 };
+
+ipcRenderer.on('world', (_e, w) => { env.food = w.food || []; });
+setInterval(() => {
+  const perchDir = fly.perch ? fly.perch.ledge.dir : null;
+  const alt = fly.z * 26 + 2
+    + (perchDir === 'h' ? 34 : perchDir === 'v' ? 17 : 0) * (1 - fly.z);
+  ipcRenderer.send('fly', {
+    x: fly.x, y: fly.y, heading: fly.heading, z: fly.z, alt, state: fly.state,
+  });
+}, 33);
 
 ipcRenderer.on('perches', (_e, data) => {
   const out = [];
@@ -65,8 +78,8 @@ ipcRenderer.on('cursor', (_e, c) => {
 
 ipcRenderer.on('brain', (_e, m) => {
   env.brain.last = performance.now() / 1000;
-  if (m.type === 'rates') env.brain.rates = m.rates;
-  else if (m.type === 'status') env.brain.mode = m.mode;
+  if (m.type === 'rates') { env.brain.rates = m.rates; env.brain.vision = !!m.vision; }
+  else if (m.type === 'status') { env.brain.mode = m.mode; env.brain.vision = !!m.vision; }
 });
 
 let paused = false;

@@ -1,5 +1,23 @@
 [
   {
+    "role": "side",
+    "src": "reference/raw/musca-autumnalis-regina-ccbysa4.jpg",
+    "out": "side.png",
+    "crop": [150, 40, 3690, 2140],
+    "coordSpace": "working",
+    "bg": "corner",
+    "bgPoint": [1750, 950],
+    "t0": 28,
+    "t1": 95,
+    "maxSize": 1024,
+    "angleOffset": 0,
+    "protectPolys": [[
+      [700, 240], [900, 150], [1200, 110], [1600, 140], [1950, 330],
+      [1985, 395], [1600, 430], [1250, 420], [950, 380], [760, 300]
+    ]],
+    "extra": { "faces": "left" }
+  },
+  {
     "role": "body",
     "src": "reference/raw/dorsal-fly-back-usgs-biml-pd.jpg",
     "out": "body.png",

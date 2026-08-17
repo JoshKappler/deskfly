@@ -2,6 +2,7 @@ const { parentPort, workerData } = require('worker_threads');
 const fs = require('fs');
 const path = require('path');
 const { Sim } = require('./sim.js');
+const { Eye } = require('./eye.js');
 
 const dataDir = workerData.dataDir;
 
@@ -25,42 +26,79 @@ function loadBrain() {
   };
   const groups = {};
   for (const [k, v] of Object.entries(groupsRaw)) groups[k] = Int32Array.from(v);
-  return { sim: new Sim(data, params), groups, meta, params };
+  let eye = null;
+  const eyePath = path.join(dataDir, 'eye.json');
+  if (fs.existsSync(eyePath)) {
+    eye = new Eye(JSON.parse(fs.readFileSync(eyePath, 'utf8')), params);
+  }
+  return { sim: new Sim(data, params), groups, meta, params, eye };
 }
 
-function runReal({ sim, groups, meta, params }) {
-  parentPort.postMessage({
+function runReal({ sim, groups, meta, params, eye }) {
+  let pano = null;
+  let lastPanoWall = 0;
+  const fly = { x: 400, y: 400, heading: 0, z: 1 };
+  const visionOn = () => pano !== null && Date.now() - lastPanoWall < 2500;
+
+  const sendStatus = () => parentPort.postMessage({
     type: 'status',
     mode: 'live',
-    text: `FlyWire live, ${meta.n_neurons.toLocaleString()} neurons`,
+    vision: visionOn(),
+    text: `FlyWire live, ${meta.n_neurons.toLocaleString()} neurons, ` +
+      (visionOn() ? 'vision on' : 'vision off'),
   });
+  sendStatus();
+  setInterval(sendStatus, 3000);
 
-  const STIM = { loom: { group: 'loom', ms: 250 } };
+  const STIM = {
+    loom: { group: 'loom_l', also: 'loom_r', ms: 250 },
+    sugar: { group: 'sugar', ms: 300 },
+  };
   parentPort.on('message', (m) => {
-    if (m.type !== 'stim') return;
-    const s = STIM[m.name];
-    if (s && groups[s.group] && groups[s.group].length) {
-      sim.stimulate(groups[s.group], params.stim_hz * (m.strength || 1), s.ms);
+    if (m.type === 'fly') {
+      fly.x = m.x; fly.y = m.y; fly.heading = m.heading; fly.z = m.z;
+    } else if (m.type === 'pano') {
+      pano = { data: new Uint8Array(m.data), w: m.w, h: m.h };
+      lastPanoWall = Date.now();
+    } else if (m.type === 'stim') {
+      // scripted fallback, used only when vision is off (and by smoke tests)
+      const s = STIM[m.name];
+      if (s) {
+        for (const g of [s.group, s.also]) {
+          if (g && groups[g] && groups[g].length) {
+            sim.stimulate(groups[g], params.stim_hz * (m.strength || 1), s.ms);
+          }
+        }
+      }
     }
   });
 
-  // weak rotating background drive so the brain is never fully silent;
-  // subthreshold nudges, not the full stimulus weight
-  const bgSize = Math.min(params.bg_size || 200, sim.N);
-  setInterval(() => {
-    const bg = new Int32Array(bgSize);
-    for (let i = 0; i < bgSize; i++) bg[i] = (Math.random() * sim.N) | 0;
-    sim.stimulate(bg, params.bg_hz, 1000, params.w_syn_mv * (params.bg_w_factor || 20));
-  }, 1000);
+  // weak intrinsic drive on the command neurons: stands in for the hunger,
+  // circadian and internal-state inputs the connectome does not model, so
+  // spontaneous bouts emerge stochastically through the real cells
+  if (params.dn_drive) {
+    const dw = params.w_syn_mv * (params.dn_drive.w_factor || 80);
+    setInterval(() => {
+      for (const [key, hz] of Object.entries(params.dn_drive)) {
+        if (key === 'w_factor' || !groups[key] || !groups[key].length) continue;
+        sim.stimulate(groups[key], hz, 1000, dw);
+      }
+    }, 1000);
+  }
 
   // adaptive pacing: simulate as much biological time as fits the wall budget
-  const WALL_BUDGET_MS = 6;
+  const WALL_BUDGET_MS = 8;
+  const visEvery = Math.max(1, Math.round(params.vision.update_ms / params.dt_ms));
   let simSpeed = 0.3;
   setInterval(() => {
     const t0 = Date.now();
     const targetMs = 30 * simSpeed;
     let done = 0;
     while (done < targetMs && Date.now() - t0 < WALL_BUDGET_MS) {
+      if (eye && pano && sim.step % visEvery === 0) {
+        eye.update(pano, fly, params.vision.update_ms);
+      }
+      if (eye && pano) eye.tick(sim);
       sim.tick();
       done += sim.p.dt_ms;
     }
@@ -83,15 +121,18 @@ function runReal({ sim, groups, meta, params }) {
       rates[k] = g.length ? (c - totals[k]) / g.length / bioS : 0;
       totals[k] = c;
     }
-    parentPort.postMessage({ type: 'rates', rates, simSpeed, activeN: sim.activeN });
+    parentPort.postMessage({
+      type: 'rates', rates, simSpeed, vision: visionOn(), activeN: sim.activeN,
+    });
   }, 250);
 }
 
-// no prepared data yet: fake the two rates the behavior reads, say so loudly
+// no prepared data yet: fake the rates the behavior reads, say so loudly
 function runStub() {
   parentPort.postMessage({
     type: 'status',
     mode: 'stub',
+    vision: false,
     text: 'stub brain (npm run fetch:brain && npm run prep:brain)',
   });
   let gfBurst = 0;
@@ -105,7 +146,11 @@ function runStub() {
     walkDrift = Math.max(0, Math.min(12, walkDrift + (Math.random() - 0.5) * 2));
     parentPort.postMessage({
       type: 'rates',
-      rates: { gf: gfBurst > 0 ? 120 : 0, walk: walkDrift, loom: 0 },
+      vision: false,
+      rates: {
+        gf: gfBurst > 0 ? 120 : 0, walk: walkDrift, groom: 0,
+        turn_l: 0, turn_r: 0, mdn: 0, feed: 0,
+      },
     });
     gfBurst = Math.max(0, gfBurst - 0.15);
   }, 250);

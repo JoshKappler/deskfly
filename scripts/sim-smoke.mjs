@@ -28,7 +28,7 @@ const sim = new Sim({
 }, params);
 
 const gf = Int32Array.from(groups.gf);
-const loom = Int32Array.from(groups.loom);
+const loom = Int32Array.from([...groups.loom_l, ...groups.loom_r]);
 const gfSpikes = () => gf.reduce((s, i) => s + sim.spikeCount[i], 0);
 
 function run(ms) {

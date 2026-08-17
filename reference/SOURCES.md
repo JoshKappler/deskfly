@@ -66,4 +66,6 @@ CC BY and CC BY-SA items; the rest are CC0 or public domain.
 `sprites/body.png` and `sprites/head.png` are cut from
 raw/dorsal-fly-back-usgs-biml-pd.jpg (public domain, USGS BIML): the clean half of the
 specimen mirrored across the body axis (scripts/make-sprites.js + sprites.config.json).
-Wings and legs are drawn procedurally at runtime. No CC-licensed pixels ship in sprites/.
+`sprites/side.png` is cut from raw/musca-autumnalis-regina-ccbysa4.jpg and is therefore
+CC BY-SA 4.0, credit Elena Regina, share-alike applies to that file. Top-view wings and
+legs are drawn procedurally at runtime.

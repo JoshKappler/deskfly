@@ -1,4 +1,15 @@
 {
+  "side": {
+    "file": "side.png",
+    "w": 1024,
+    "h": 589,
+    "angleOffset": 0,
+    "bodyLenFrac": 1,
+    "extra": {
+      "faces": "left"
+    },
+    "role": "side"
+  },
   "body": {
     "file": "body.png",
     "w": 1618,
