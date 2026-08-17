@@ -1,0 +1,17 @@
+{
+  "v_rest_mv": -52.0,
+  "v_reset_mv": -52.0,
+  "v_th_mv": -45.0,
+  "tau_mbr_ms": 20.0,
+  "tau_syn_ms": 5.0,
+  "refr_ms": 2.2,
+  "delay_ms": 1.8,
+  "dt_ms": 0.2,
+  "w_syn_mv": 0.275,
+  "stim_w_factor": 250,
+  "stim_hz": 150,
+  "bg_hz": 1.0,
+  "bg_w_factor": 20,
+  "bg_size": 200,
+  "inhibitory_nt": ["gaba", "glut"]
+}

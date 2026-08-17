@@ -1,0 +1,7 @@
+node_modules/
+brain/data/
+helper/perchscan
+reference/raw/
+sprites/debug-*.png
+.DS_Store
+*.log

@@ -1,0 +1,35 @@
+[
+  {
+    "role": "body",
+    "src": "reference/raw/dorsal-fly-back-usgs-biml-pd.jpg",
+    "out": "body.png",
+    "crop": [790, 230, 3700, 2470],
+    "coordSpace": "working",
+    "bg": "poly",
+    "mirrorAxisYOrig": 625,
+    "mirrorFrom": "bottom",
+    "maxSize": 2048,
+    "angleOffset": 0,
+    "silhouette": [
+      [61, 625], [1669, 625], [1669, 819], [1536, 901], [1413, 963],
+      [1280, 983], [1075, 983], [973, 1009], [768, 1024], [563, 1009],
+      [389, 978], [225, 906], [123, 819], [72, 732]
+    ]
+  },
+  {
+    "role": "head",
+    "src": "reference/raw/dorsal-fly-back-usgs-biml-pd.jpg",
+    "out": "head.png",
+    "crop": [790, 230, 3700, 2470],
+    "coordSpace": "working",
+    "bg": "poly",
+    "mirrorAxisYOrig": 625,
+    "mirrorFrom": "top",
+    "maxSize": 2048,
+    "angleOffset": 0,
+    "silhouette": [
+      [1669, 628], [1669, 369], [1720, 317], [1802, 292], [1894, 295],
+      [1966, 323], [2012, 369], [2033, 430], [2042, 500], [2046, 628]
+    ]
+  }
+]

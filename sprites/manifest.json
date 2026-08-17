@@ -1,0 +1,20 @@
+{
+  "body": {
+    "file": "body.png",
+    "w": 1618,
+    "h": 807,
+    "angleOffset": 0,
+    "bodyLenFrac": 1,
+    "extra": {},
+    "role": "body"
+  },
+  "head": {
+    "file": "head.png",
+    "w": 384,
+    "h": 675,
+    "angleOffset": 0,
+    "bodyLenFrac": 1,
+    "extra": {},
+    "role": "head"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "name": "deskfly",
+  "version": "0.1.0",
+  "description": "A housefly with a real connectome that lives on your screen",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "launch": "sh scripts/launch.sh",
+    "build:helper": "swiftc -O helper/perchscan.swift -o helper/perchscan",
+    "fetch:brain": "node scripts/fetch-connectome.mjs",
+    "prep:brain": "node scripts/prepare-brain.mjs",
+    "smoke:brain": "node scripts/sim-smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0"
+  }
+}
