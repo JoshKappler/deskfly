@@ -13,6 +13,7 @@
   "bg_per_cell_hz": 0.8,
   "bg_w_factor": 45,
   "dn_drive": { "walk": 4, "groom": 3, "mdn": 1, "w_factor": 80 },
+  "hunger": { "start": 0.7, "full_after_s": 900, "sate_per_sugar": 0.03 },
   "inhibitory_nt": ["gaba", "glut"],
   "vision": {
     "subsample": 2,

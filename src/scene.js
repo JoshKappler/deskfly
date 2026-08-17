@@ -201,14 +201,23 @@ windify(canopyMat, '0.05');
 const blossomMat = new THREE.MeshStandardMaterial({ color: 0xecb9d0, roughness: 0.7 });
 let treeGroup = null;
 
-function orientBetween(mesh, i, ax, ay, az, bx, by, bz, r0, r1) {
+// groves slide: each tree keeps a current position that persists across
+// rebuilds and eases toward its target, so a dragged window's trees glide
+let treeCur = new Map();
+let slideEntries = [];
+
+function beamTransform(ax, ay, az, bx, by, bz, r) {
   V.set(bx - ax, by - ay, bz - az);
   const len = V.length();
   Q.setFromUnitVectors(UP, V.normalize());
   V.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
-  S.set((r0 + r1) / 2, len, (r0 + r1) / 2);
-  M.compose(V, Q, S);
-  mesh.setMatrixAt(i, M);
+  S.set(r, len, r);
+}
+
+function writeItem(it, cur) {
+  V.set(cur.x + it.offX, it.y, cur.y + it.offZ);
+  M.compose(V, it.q, it.s);
+  it.mesh.setMatrixAt(it.i, M);
 }
 
 function rebuildTrees() {
@@ -217,9 +226,11 @@ function rebuildTrees() {
     treeGroup.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
   }
   treeGroup = new THREE.Group();
+  slideEntries = [];
+  const nextCur = new Map();
   const trees = [];
   for (const w of state.walls) trees.push(...treesForWall(w));
-  if (!trees.length) { scene.add(treeGroup); return; }
+  if (!trees.length) { treeCur = nextCur; scene.add(treeGroup); return; }
 
   let nBranch = 0, nBlossom = 0;
   for (const t of trees) { nBranch += t.branches.length; if (t.kind === 'input') nBlossom += 7; }
@@ -239,43 +250,52 @@ function rebuildTrees() {
   let bi = 0, fi = 0, li = 0;
   for (let i = 0; i < trees.length; i++) {
     const t = trees[i];
+    const cur = treeCur.get(t.key) || { x: t.x, y: t.y };
+    nextCur.set(t.key, cur);
+    const entry = { cur, tgt: { x: t.x, y: t.y }, items: [] };
+    const add = (mesh, idx) => entry.items.push({
+      mesh, i: idx, q: Q.clone(), s: S.clone(), offX: V.x - t.x, y: V.y, offZ: V.z - t.y,
+    });
+
     const h = t.trunkH + t.canopyR;
     V.set(t.x, h / 2, t.y);
     Q.setFromAxisAngle(UP, t.seed * 6.28);
     S.set(1.1, h, 1.1);
-    M.compose(V, Q, S);
-    trunks.setMatrixAt(i, M);
+    add(trunks, i);
     for (const b of t.branches) {
-      orientBetween(branches, bi++, b.x0, b.alt0, b.y0, b.x1, b.alt1, b.y1, 0.9, 0.45);
+      beamTransform(b.x0, b.alt0, b.y0, b.x1, b.alt1, b.y1, 0.6);
+      add(branches, bi++);
     }
     for (let k = 0; k < 3; k++) {
-      const hk = hash2(Math.round(t.x) + k * 5, Math.round(t.y) - k * 3);
+      const hk = hash2(t.seed * 91 + k * 5, t.seed * 47 - k * 3);
       const r = t.canopyR * (0.7 + hk * 0.5);
       V.set(
         t.x + (hk - 0.5) * t.canopyR * 1.1,
         t.trunkH + t.canopyR * 0.55 + k * t.canopyR * 0.42,
-        t.y + (hash2(Math.round(t.y) + k, Math.round(t.x)) - 0.5) * t.canopyR * 1.1);
+        t.y + (hash2(t.seed * 31 + k, t.seed * 17) - 0.5) * t.canopyR * 1.1);
       Q.setFromAxisAngle(UP, hk * 6.28);
       S.set(r, r * 0.82, r);
-      M.compose(V, Q, S);
-      blobs.setMatrixAt(fi, M);
       col.setHSL(0.29 + hk * 0.05, 0.5, 0.24 + t.seed * 0.1);
       blobs.setColorAt(fi, col);
       blobPhase[fi] = t.seed * 17 + k * 2.4;
-      fi++;
+      add(blobs, fi++);
     }
     if (t.kind === 'input' && blossoms) {
       for (let k = 0; k < 7 && li < nBlossom; k++) {
-        const hk = hash2(Math.round(t.x) * 3 + k, Math.round(t.y) + k * 11);
+        const hk = hash2(t.seed * 53 + k, t.seed * 29 + k * 11);
         V.set(
           t.x + (hk - 0.5) * t.canopyR * 1.9,
-          t.trunkH + t.canopyR * (0.5 + hash2(k, Math.round(t.x)) * 0.9),
-          t.y + (hash2(k + 3, Math.round(t.y)) - 0.5) * t.canopyR * 1.9);
-        M.compose(V, Q.identity(), S.set(1, 1, 1));
-        blossoms.setMatrixAt(li++, M);
+          t.trunkH + t.canopyR * (0.5 + hash2(k, t.seed * 71) * 0.9),
+          t.y + (hash2(k + 3, t.seed * 83) - 0.5) * t.canopyR * 1.9);
+        Q.identity();
+        S.set(1, 1, 1);
+        add(blossoms, li++);
       }
     }
+    for (const it of entry.items) writeItem(it, cur);
+    slideEntries.push(entry);
   }
+  treeCur = nextCur;
   for (const m of [trunks, branches, blobs, blossoms]) {
     if (!m) continue;
     m.castShadow = true;
@@ -284,6 +304,21 @@ function rebuildTrees() {
   }
   if (blobs.instanceColor) blobs.instanceColor.needsUpdate = true;
   scene.add(treeGroup);
+}
+
+function slideTrees(dt) {
+  let dirty = null;
+  const k = Math.min(1, dt * 4.5);
+  for (const e of slideEntries) {
+    let dx = e.tgt.x - e.cur.x, dy = e.tgt.y - e.cur.y;
+    if (dx * dx + dy * dy < 0.01) continue;
+    e.cur.x += dx * k;
+    e.cur.y += dy * k;
+    for (const it of e.items) writeItem(it, e.cur);
+    dirty = dirty || new Set();
+    for (const it of e.items) dirty.add(it.mesh);
+  }
+  if (dirty) for (const m of dirty) m.instanceMatrix.needsUpdate = true;
 }
 
 // ── still scenery: pond, rocks, bushes, flowers, seeded by screen size ──────
@@ -471,10 +506,14 @@ function refreshEnv() {
 // ── main loop ────────────────────────────────────────────────────────────────
 const camPos = new THREE.Vector3(400, 20, 400);
 let lastEye = 0;
+let lastTick = 0;
 const moundPos = new THREE.Vector3(-1e4, 15, -1e4);
 
 function tick(now) {
   uTime.value = now / 1000;
+  const dt = Math.min(0.2, Math.max(0.001, (now - lastTick) / 1000));
+  lastTick = now;
+  slideTrees(dt);
   const f = state.fly;
 
   const offscreen = state.cursor.x < -5000;
@@ -525,7 +564,8 @@ function updateHud() {
   let line2 = 'brain: waiting';
   if (b && b.rates) {
     const r = b.rates;
-    line2 = `sim ${(b.simSpeed || 0).toFixed(2)}x  vision ${b.vision ? 'on' : 'off'}  `
+    const hung = b.hunger !== undefined ? `  hunger ${Math.round(b.hunger * 100)}%` : '';
+    line2 = `sim ${(b.simSpeed || 0).toFixed(2)}x  vision ${b.vision ? 'on' : 'off'}${hung}  `
       + `GF ${r.gf?.toFixed(1) ?? '-'}  walk ${r.walk?.toFixed(1) ?? '-'}  groom ${r.groom?.toFixed(1) ?? '-'}  `
       + `feed ${r.feed?.toFixed(1) ?? '-'}  loom ${r.loom_l?.toFixed(1) ?? '-'}/${r.loom_r?.toFixed(1) ?? '-'} Hz`;
   }

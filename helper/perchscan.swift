@@ -44,6 +44,7 @@ var occluders: [CGRect] = []
 for w in list.prefix(60) {
   guard let layer = w[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
   guard let b = w[kCGWindowBounds as String] as? [String: Double] else { continue }
+  let wid = (w[kCGWindowNumber as String] as? Int) ?? 0
   if let alpha = w[kCGWindowAlpha as String] as? Double, alpha < 0.05 { continue }
   let r = CGRect(x: b["X"] ?? 0, y: b["Y"] ?? 0, width: b["Width"] ?? 0, height: b["Height"] ?? 0)
   if r.width < 90 || r.height < 45 { continue }
@@ -51,13 +52,15 @@ for w in list.prefix(60) {
   let hHoles = occluders.filter { $0.minY <= r.minY && $0.maxY >= r.minY }
     .map { Seg(a: Double($0.minX), b: Double($0.maxX)) }
   for s in subtract(Seg(a: Double(r.minX), b: Double(r.maxX)), hHoles) where s.b - s.a >= 40 {
-    ledges.append(["dir": "h", "x0": s.a, "x1": s.b, "y": Double(r.minY), "kind": "window"])
+    ledges.append(["dir": "h", "x0": s.a, "x1": s.b, "y": Double(r.minY), "kind": "window",
+                   "wid": wid, "eid": 0, "ox": Double(r.minX)])
   }
   for x in [r.minX, r.maxX] {
     let vHoles = occluders.filter { $0.minX <= x && $0.maxX >= x }
       .map { Seg(a: Double($0.minY), b: Double($0.maxY)) }
     for s in subtract(Seg(a: Double(r.minY), b: Double(r.maxY)), vHoles) where s.b - s.a >= 40 {
-      ledges.append(["dir": "v", "y0": s.a, "y1": s.b, "x": Double(x), "kind": "window"])
+      ledges.append(["dir": "v", "y0": s.a, "y1": s.b, "x": Double(x), "kind": "window",
+                     "wid": wid, "eid": x == r.minX ? 2 : 3, "ox": Double(r.minY)])
     }
   }
   occluders.append(r)
@@ -81,7 +84,8 @@ if AXIsProcessTrusted(), let front = NSWorkspace.shared.frontmostApplication {
       if inputRoles.contains(role) {
         if let r = frameOf(el), r.width >= 60, r.height >= 12, r.width <= 1400 {
           ledges.append(["dir": "h", "x0": Double(r.minX) + 3, "x1": Double(r.maxX) - 3,
-                         "y": Double(r.minY), "kind": "input"])
+                         "y": Double(r.minY), "kind": "input",
+                         "wid": Int(r.width.rounded()), "eid": 4, "ox": Double(r.minX) + 3])
         }
         continue
       }

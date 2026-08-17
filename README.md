@@ -6,9 +6,10 @@ leaky integrate-and-fire network after Shiu et al. 2024.
 
 The desktop is its 3D world, an alternate reality of your actual desktop:
 the screen plane is a grass meadow, every window edge is a line of low-poly
-trees with landable branches, the screen borders are the forest ring around
-it, berries grow where food spawns, a pond reflects the sky, and your cursor
-prowls the meadow as a dark mound of earth. One three.js scene renders that
+trees with landable branches (drag a window and its grove slides with it),
+the screen borders are the forest ring around it, berries grow where food
+spawns, a pond reflects the sky, and your cursor prowls the meadow as a
+dark mound of earth. One three.js scene renders that
 world twice: a cube camera at the fly's position becomes the 360-degree
 luminance panorama its real retinotopic eye map receives (11,118 cells at
 their measured positions), and a perspective fly-cam shows you the same
@@ -60,10 +61,12 @@ the viewer on SIGUSR2, so any hotkey tool can bind
 - The eye and the viewer render the same scene, wind-blown grass included.
   Trees and branches are also physical (landable); rocks, flowers, bushes
   and the pond are visible to the fly but intangible.
-- The sim runs at whatever fraction of real time fits ~25% of one core
-  (typically 0.1-0.3x); reactions are correspondingly delayed.
+- The sim runs at whatever fraction of real time fits its wall budget, most
+  of one core (typically 0.25-0.45x); reactions are correspondingly delayed.
 - Command neurons carry a weak Poisson "internal state" drive so spontaneous
-  bouts exist; escape, steering direction, and feeding are sensory-driven.
+  bouts exist, scaled by a labeled hunger variable that rises between meals
+  and falls as the sugar cells taste food, so activity comes in waves.
+  Escape, steering direction, and feeding are sensory-driven.
 - Flight paths, landing mechanics and perch choice are body-level heuristics;
   the brain decides when, what, and which way.
 - `scripts/vision-smoke.mjs` proves panorama -> optic lobe -> giant fiber

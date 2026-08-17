@@ -22,36 +22,48 @@ class World {
 
   setLedges(ledges) {
     this.walls = ledges.map((l) => (l.dir === 'h'
-      ? { x0: l.x0, y0: l.y, x1: l.x1, y1: l.y, kind: l.kind }
-      : { x0: l.x, y0: l.y0, x1: l.x, y1: l.y1, kind: l.kind }));
+      ? { x0: l.x0, y0: l.y, x1: l.x1, y1: l.y, kind: l.kind, wid: l.wid, eid: l.eid, ox: l.ox }
+      : { x0: l.x, y0: l.y0, x1: l.x, y1: l.y1, kind: l.kind, wid: l.wid, eid: l.eid, ox: l.ox }));
   }
 }
 
-// One wall -> its row of trees. Seeded by quantized world position, not by
-// array index, so the forest is stable across perch rescans and identical
-// in every process that calls this.
+// One wall -> its row of trees, on a fixed grid anchored at the owning
+// window's edge origin and seeded by (window id, edge, slot). A moved window
+// therefore carries the same grove; occlusion just masks which slots show.
+// Walls without an id (an old helper binary) fall back to position seeding.
 function treesForWall(wall) {
-  const ex = wall.x1 - wall.x0, ey = wall.y1 - wall.y0;
-  const len = Math.hypot(ex, ey);
-  if (len < 18) return [];
-  const ux = ex / len, uy = ey / len;
+  const horiz = wall.y0 === wall.y1;
+  const a0 = horiz ? Math.min(wall.x0, wall.x1) : Math.min(wall.y0, wall.y1);
+  const a1 = horiz ? Math.max(wall.x0, wall.x1) : Math.max(wall.y0, wall.y1);
+  if (a1 - a0 < 18) return [];
+  const ux = horiz ? 1 : 0, uy = horiz ? 0 : 1;
+  const keyed = wall.wid !== undefined;
+  const ox = keyed && wall.ox !== undefined ? wall.ox : 0;
   const trees = [];
-  const n = Math.max(1, Math.round(len / TREE_SP));
-  for (let i = 0; i < n; i++) {
-    const s = (i + 0.5) * (len / n);
-    const px = wall.x0 + ux * s, py = wall.y0 + uy * s;
-    const qx = Math.round(px / 4), qy = Math.round(py / 4);
-    const h1 = hash2(qx, qy);
-    const h2 = hash2(qx + 7, qy - 3);
-    const jitter = (h1 - 0.5) * 8;
-    const x = px + ux * jitter, y = py + uy * jitter;
+  const k0 = Math.floor((a0 - ox) / TREE_SP), k1 = Math.ceil((a1 - ox) / TREE_SP);
+  for (let k = k0; k <= k1; k++) {
+    const center = ox + (k + 0.5) * TREE_SP;
+    let sA, sB;
+    if (keyed) {
+      sA = wall.wid * 0.731 + wall.eid * 131.7 + k * 13.1;
+      sB = k * 7.7 - wall.eid * 3.3;
+    } else {
+      const px = horiz ? center : wall.x0, py = horiz ? wall.y0 : center;
+      sA = Math.round(px / 4); sB = Math.round(py / 4);
+    }
+    const h1 = hash2(sA, sB);
+    const h2 = hash2(sA + 7, sB - 3);
+    const along = center + (h1 - 0.5) * 8;
+    if (along < a0 + 2 || along > a1 - 2) continue;
+    const x = horiz ? along : wall.x0;
+    const y = horiz ? wall.y0 : along;
     const trunkH = 15 + h2 * 8;
     const canopyR = 8 + h1 * 4.5;
     const top = trunkH + canopyR * 1.55;
     const branches = [];
     const nb = 2 + (h2 > 0.55 ? 1 : 0);
     for (let b = 0; b < nb; b++) {
-      const hb = hash2(qx + b * 13, qy - b * 7 + 31);
+      const hb = hash2(sA + b * 13, sB - b * 7 + 31);
       const alt0 = 8 + (trunkH - 5) * ((b + 0.3 + hb * 0.6) / nb);
       const side = b % 2 ? 1 : -1;
       const ang = Math.atan2(uy, ux) + side * (0.5 + hb * 1.1);
@@ -63,15 +75,18 @@ function treesForWall(wall) {
         alt1: alt0 + 2 + hb * 3.5,
       });
     }
-    trees.push({ x, y, ux, uy, trunkH, canopyR, top, kind: wall.kind, branches, seed: h1 });
+    trees.push({
+      x, y, ux, uy, trunkH, canopyR, top, kind: wall.kind, branches, seed: h1,
+      key: keyed ? `${wall.wid}:${wall.eid}:${k}` : `p:${Math.round(x)}:${Math.round(y)}`,
+    });
   }
   return trees;
 }
 
 function wallFromLedge(l) {
   return l.dir === 'h'
-    ? { x0: l.x0, y0: l.y, x1: l.x1, y1: l.y, kind: l.kind }
-    : { x0: l.x, y0: l.y0, x1: l.x, y1: l.y1, kind: l.kind };
+    ? { x0: l.x0, y0: l.y, x1: l.x1, y1: l.y, kind: l.kind, wid: l.wid, eid: l.eid, ox: l.ox }
+    : { x0: l.x, y0: l.y0, x1: l.x, y1: l.y1, kind: l.kind, wid: l.wid, eid: l.eid, ox: l.ox };
 }
 
 // Landable branch tips, shaped as tiny horizontal ledges with an altitude so

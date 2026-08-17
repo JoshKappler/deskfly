@@ -274,7 +274,9 @@ class Fly {
       const w = (KIND_WEIGHT[l.kind] || 1) / (1 + d / 500);
       cands.push({ ledge: l, u, w, alt });
     }
-    // ground spots; food smells good (attraction heuristic, not a DN readout)
+    // ground spots; food smells better the hungrier it is (attraction
+    // heuristic scaled by the brain's hunger state, not a DN readout)
+    const hunger = env.brain.hunger !== undefined ? env.brain.hunger : 0.7;
     for (let i = 0; i < 5; i++) {
       const nearFood = env.food.length && i < 2;
       const f = nearFood ? env.food[(Math.random() * env.food.length) | 0] : null;
@@ -285,7 +287,7 @@ class Fly {
         ledge: { dir: 'ground', x: gx, y: gy, kind: 'ground' },
         u: 0,
         alt: 2,
-        w: (f ? 4.0 : KIND_WEIGHT.ground) / (1 + Math.hypot(gx - this.x, gy - this.y) / 500),
+        w: (f ? 1.5 + 6 * hunger : KIND_WEIGHT.ground) / (1 + Math.hypot(gx - this.x, gy - this.y) / 500),
       });
     }
     if (!cands.length) return null;
@@ -417,7 +419,11 @@ class Fly {
         const d = Math.hypot(f.x - this.x, f.y - this.y);
         if (d < 140 && (!best || d < best.d)) best = { f, d };
       }
-      if (best) turn += angNorm(Math.atan2(best.f.y - this.y, best.f.x - this.x) - this.heading) * 1.4 * dt;
+      if (best) {
+        const hunger = env.brain.hunger !== undefined ? env.brain.hunger : 0.7;
+        turn += angNorm(Math.atan2(best.f.y - this.y, best.f.x - this.x) - this.heading)
+          * (0.4 + 2.0 * hunger) * dt;
+      }
       this.heading += turn;
       const nx = this.x + Math.cos(this.heading) * speed * dt;
       const ny = this.y + Math.sin(this.heading) * speed * dt;

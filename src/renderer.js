@@ -42,6 +42,7 @@ const env = {
     rates: {},
     mode: 'starting',
     vision: false,
+    hunger: 0.7,
     last: 0,
     age() { return performance.now() / 1000 - this.last; },
   },
@@ -81,7 +82,11 @@ ipcRenderer.on('cursor', (_e, c) => {
 
 ipcRenderer.on('brain', (_e, m) => {
   env.brain.last = performance.now() / 1000;
-  if (m.type === 'rates') { env.brain.rates = m.rates; env.brain.vision = !!m.vision; }
+  if (m.type === 'rates') {
+    env.brain.rates = m.rates;
+    env.brain.vision = !!m.vision;
+    if (m.hunger !== undefined) env.brain.hunger = m.hunger;
+  }
   else if (m.type === 'status') { env.brain.mode = m.mode; env.brain.vision = !!m.vision; }
 });
 

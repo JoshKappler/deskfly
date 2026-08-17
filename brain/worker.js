@@ -50,6 +50,16 @@ function runReal({ sim, groups, meta, params, eye }) {
   sendStatus();
   setInterval(sendStatus, 3000);
 
+  // hunger: a labeled internal-state variable the connectome does not model.
+  // It rises between meals and falls when the sugar cells taste food, and it
+  // scales the intrinsic drive so activity comes in natural waves.
+  let hunger = (params.hunger && params.hunger.start) || 0.7;
+  if (params.hunger) {
+    setInterval(() => {
+      hunger = Math.min(1, hunger + 1 / params.hunger.full_after_s);
+    }, 1000);
+  }
+
   const STIM = {
     loom: { group: 'loom_l', also: 'loom_r', ms: 250 },
     sugar: { group: 'sugar', ms: 300 },
@@ -61,7 +71,10 @@ function runReal({ sim, groups, meta, params, eye }) {
       pano = { data: new Uint8Array(m.data), w: m.w, h: m.h };
       lastPanoWall = Date.now();
     } else if (m.type === 'stim') {
-      // scripted fallback, used only when vision is off (and by smoke tests)
+      // taste and fallback stimuli; sugar also sates hunger
+      if (m.name === 'sugar' && params.hunger) {
+        hunger = Math.max(0, hunger - params.hunger.sate_per_sugar);
+      }
       const s = STIM[m.name];
       if (s) {
         for (const g of [s.group, s.also]) {
@@ -81,13 +94,16 @@ function runReal({ sim, groups, meta, params, eye }) {
     setInterval(() => {
       for (const [key, hz] of Object.entries(params.dn_drive)) {
         if (key === 'w_factor' || !groups[key] || !groups[key].length) continue;
-        sim.stimulate(groups[key], hz, 1000, dw);
+        let mul = 1;
+        if (key === 'walk' || key === 'mdn') mul = 0.4 + 1.8 * hunger;
+        else if (key === 'groom') mul = 1.6 - hunger;
+        sim.stimulate(groups[key], hz * mul, 1000, dw);
       }
     }, 1000);
   }
 
   // adaptive pacing: simulate as much biological time as fits the wall budget
-  const WALL_BUDGET_MS = 8;
+  const WALL_BUDGET_MS = 24;
   const visEvery = Math.max(1, Math.round(params.vision.update_ms / params.dt_ms));
   let simSpeed = 0.3;
   setInterval(() => {
@@ -122,7 +138,7 @@ function runReal({ sim, groups, meta, params, eye }) {
       totals[k] = c;
     }
     parentPort.postMessage({
-      type: 'rates', rates, simSpeed, vision: visionOn(), activeN: sim.activeN,
+      type: 'rates', rates, simSpeed, vision: visionOn(), activeN: sim.activeN, hunger,
     });
   }, 250);
 }

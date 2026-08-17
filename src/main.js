@@ -158,7 +158,7 @@ function startPerchScan() {
     });
   };
   setTimeout(scan, 1500);
-  setInterval(scan, 2500);
+  setInterval(scan, 1200);
 }
 
 function sendWorld() {
@@ -204,7 +204,7 @@ function startBrain() {
         lastLog = Date.now();
         const r = Object.fromEntries(Object.entries(m.rates).map(([k, v]) => [k, +v.toFixed(1)]));
         console.log('[rates]', JSON.stringify(r), 'speed', m.simSpeed.toFixed(2),
-          'active', m.activeN, 'fly', flyState.state,
+          'hunger', (m.hunger ?? 0).toFixed(2), 'active', m.activeN, 'fly', flyState.state,
           Math.round(flyState.x) + ',' + Math.round(flyState.y), 'alt', Math.round(flyState.alt || 0));
       }
     }
