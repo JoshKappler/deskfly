@@ -210,8 +210,12 @@ function startCapture() {
   }, 1500);
 }
 
+const PID_FILE = '/tmp/deskfly.pid';
+
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
+  try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch {}
+  process.on('SIGUSR2', toggleViewer); // external hotkey hook: toggles the viewer
   const d = screen.getPrimaryDisplay();
   world = new World(d.bounds.width, d.bounds.height);
   createWindow();
@@ -233,3 +237,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
+app.on('will-quit', () => { try { fs.unlinkSync(PID_FILE); } catch {} });

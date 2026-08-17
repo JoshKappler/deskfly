@@ -13,7 +13,7 @@ const OVERLAP_SRC = 115;      // body-over-head seam overlap, source px
 const SIDE_BODY_FRAC = 0.75;  // body length / side-sprite width
 const SIDE_CENTER_X = 0.385;  // body centre x in the side sprite
 const SIDE_FEET_Y = 0.965;    // feet line y in the side sprite
-const SIDE_SHOULDER = [0.125, 0.56];
+const SIDE_SHOULDER = [0.185, 0.70]; // front coxa, under the thorax
 const SIDE_EYE = [0.055, 0.42];
 const SIDE_MOUTH = [0.08, 0.63];
 
@@ -171,32 +171,104 @@ class PhotoFly {
     ctx.restore();
   }
 
-  // the mischievous bit: forelegs rub together, then wipe over the eye
+  // the mischievous bit: articulated forelegs rub together, then wipe the eye.
+  // Each leg is femur + tibia solved by two-bone IK from the shoulder, with a
+  // three-segment tarsus curling past the contact point; the tarsi are what
+  // slide over each other during the rub.
   drawGroomLegs(ctx, p, drawnW, drawnH, sx, sy) {
-    const cycle = (p.groomPhase / 13) % 2; // rub ~2.4s, wipe ~2.4s
-    const wipe = cycle > 1;
-    const shX = sx(SIDE_SHOULDER[0]), shY = sy(SIDE_SHOULDER[1]);
-    ctx.strokeStyle = 'rgba(28,24,20,0.95)';
-    ctx.lineCap = 'round';
-    for (let leg = 0; leg < 2; leg++) {
-      const ph = p.groomPhase * 2 + leg * Math.PI;
-      let tipX, tipY;
-      if (wipe) {
-        const k = (Math.sin(p.groomPhase * 1.5 + leg * 0.6) + 1) / 2;
-        tipX = sx(SIDE_EYE[0]) + drawnW * 0.02 * leg;
-        tipY = sy(SIDE_EYE[1]) * (1 - k) + sy(SIDE_EYE[1] + 0.33) * k;
-      } else {
-        tipX = sx(SIDE_SHOULDER[0] + 0.015) + Math.sin(ph) * drawnW * 0.022;
-        tipY = sy(SIDE_SHOULDER[1] + 0.22) + Math.cos(ph) * drawnH * 0.02;
+    const W = drawnW, H = drawnH;
+    const cyc = (p.groomPhase / 13) % 2;
+    const ss = (a, b, x) => {
+      const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+      return t * t * (3 - 2 * t);
+    };
+    const wipeK = cyc < 1 ? ss(0.86, 1, cyc) : 1 - ss(1.86, 2, cyc);
+
+    for (const leg of [1, 0]) {
+      const shX = sx(SIDE_SHOULDER[0]) + (leg ? 0.014 * W : 0);
+      const shY = sy(SIDE_SHOULDER[1]) + (leg ? -0.010 * H : 0);
+      const femur = 0.13 * W, tibia = 0.13 * W, tarSeg = 0.022 * W;
+
+      const ph = p.groomPhase * 2.2 + leg * Math.PI;
+      const slide = Math.sin(ph);
+      const rubX = sx(0.055) + slide * 0.016 * W + (leg ? 0.006 : -0.006) * W;
+      const rubY = sy(0.66) + slide * 0.030 * H + Math.cos(ph) * 0.008 * H;
+
+      const eyeX = sx(SIDE_EYE[0] + 0.01), eyeY = sy(SIDE_EYE[1] + 0.03);
+      const re = (0.068 + leg * 0.008) * W;
+      const k = (Math.sin(p.groomPhase * 1.4 + leg * 0.7) + 1) / 2;
+      const a = (0.62 + 0.88 * k) * Math.PI;
+      const wipeX = eyeX + Math.cos(a) * re, wipeY = eyeY + Math.sin(a) * re;
+
+      const tipX = rubX + (wipeX - rubX) * wipeK;
+      const tipY = rubY + (wipeY - rubY) * wipeK;
+
+      // two-bone IK; elbow-down, the posture flies rub and wipe in
+      let dx = tipX - shX, dy = tipY - shY;
+      let d = Math.hypot(dx, dy) || 1e-6;
+      const dc = Math.min(femur + tibia - 1e-4, Math.max(Math.abs(femur - tibia) + 1e-4, d));
+      dx *= dc / d; dy *= dc / d; d = dc;
+      const along = (femur * femur - tibia * tibia + d * d) / (2 * d);
+      const out = Math.sqrt(Math.max(0, femur * femur - along * along));
+      const mx = shX + dx * (along / d), my = shY + dy * (along / d);
+      const s1x = mx - (dy / d) * out, s1y = my + (dx / d) * out;
+      const s2x = mx + (dy / d) * out, s2y = my - (dx / d) * out;
+      const kneeX = s1y >= s2y ? s1x : s2x;
+      const kneeY = s1y >= s2y ? s1y : s2y;
+      const footX = shX + dx, footY = shY + dy;
+
+      const wMul = leg ? 0.85 : 1;
+      ctx.globalAlpha = leg ? 0.72 : 1;
+      ctx.lineCap = 'round';
+
+      ctx.strokeStyle = '#2f2822';
+      ctx.lineWidth = 0.016 * W * wMul;
+      ctx.beginPath(); ctx.moveTo(shX, shY); ctx.lineTo(kneeX, kneeY); ctx.stroke();
+      ctx.strokeStyle = '#262019';
+      ctx.lineWidth = 0.0095 * W * wMul;
+      ctx.beginPath(); ctx.moveTo(kneeX, kneeY); ctx.lineTo(footX, footY); ctx.stroke();
+
+      // tibial bristles
+      if (!leg) {
+        ctx.strokeStyle = 'rgba(24,20,16,0.8)';
+        ctx.lineWidth = 0.0025 * W;
+        const tnx = -(footY - kneeY), tny = footX - kneeX;
+        const tn = Math.hypot(tnx, tny) || 1e-6;
+        for (const f of [0.45, 0.72]) {
+          const bx = kneeX + (footX - kneeX) * f, by = kneeY + (footY - kneeY) * f;
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx + (tnx / tn) * 0.013 * W, by + (tny / tn) * 0.013 * W);
+          ctx.stroke();
+        }
       }
-      const midX = (shX + tipX) / 2 - drawnW * 0.035;
-      const midY = (shY + tipY) / 2 + drawnH * (leg ? 0.015 : -0.01);
-      ctx.lineWidth = drawnW * (leg ? 0.014 : 0.018);
-      ctx.globalAlpha = leg ? 0.75 : 1;
-      ctx.beginPath();
-      ctx.moveTo(shX, shY);
-      ctx.quadraticCurveTo(midX, midY, tipX, tipY);
-      ctx.stroke();
+
+      // tarsus: three segments curling inward past the contact point
+      let tdir = Math.atan2(footY - kneeY, footX - kneeX);
+      let curl;
+      if (wipeK > 0.5) {
+        const toEye = Math.atan2(eyeY - footY, eyeX - footX);
+        let diff = toEye - tdir;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        curl = Math.sign(diff || 1) * 0.55;
+      } else {
+        curl = (leg ? -1 : 1) * (0.30 + 0.20 * Math.sin(ph + Math.PI / 2));
+      }
+      ctx.strokeStyle = '#1d1814';
+      let px = footX, py = footY;
+      for (let i = 0; i < 3; i++) {
+        tdir += curl;
+        const nx = px + Math.cos(tdir) * tarSeg * (1 - i * 0.18);
+        const ny = py + Math.sin(tdir) * tarSeg * (1 - i * 0.18);
+        ctx.lineWidth = (0.007 - i * 0.0013) * W * wMul;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(nx, ny); ctx.stroke();
+        px = nx; py = ny;
+      }
+
+      ctx.fillStyle = '#241e18';
+      ctx.beginPath(); ctx.arc(kneeX, kneeY, 0.009 * W * wMul, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(footX, footY, 0.006 * W * wMul, 0, TAU); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }

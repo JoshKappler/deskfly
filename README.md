@@ -5,21 +5,29 @@ an adult fruit fly brain: 139,255 neurons, 3.87M connections, simulated as a
 leaky integrate-and-fire network after Shiu et al. 2024.
 
 The desktop is its 3D world: the screen plane is a grass floor, every window
-edge stands on it as a wall it can land on, food appears in the grass, and
-your cursor stalks it as a dark predator. That world is raycast into a
-spherical panorama and fed to the fly's own retinotopic photoreceptor map
-(11,118 cells placed from their real positions), so the optic lobe computes
-motion and looming from what the fly actually sees. Behavior is read out of
-the real command neurons: giant fiber (DNp01) fires -> escape takeoff away
-from the louder LC4/LPLC2 side; DNp09 -> walking bouts; DNa01/02 asymmetry
--> steering; DNg11 -> grooming (the forelegs rub, then wipe the eyes, in
-side view on a wall top); MDN -> backing up; standing on food drives the
-labellar sugar neurons and the proboscis motor pool answers -> it eats.
+edge stands on it as a line of trees it can land in, berries appear in the
+grass, and your cursor stalks it as a dark predator. That world is raycast
+into a spherical panorama and fed to the fly's own retinotopic photoreceptor
+map (11,118 cells placed from their real positions), so the optic lobe
+computes motion and looming from what the fly actually sees. Behavior is
+read out of the real command neurons: giant fiber (DNp01) fires -> escape
+takeoff away from the louder LC4/LPLC2 side; DNp09 -> walking bouts;
+DNa01/02 asymmetry -> steering; DNg11 -> grooming (articulated forelegs rub,
+then wipe the eyes, in side view on a treetop); MDN -> backing up; standing
+on food drives the labellar sugar neurons and the proboscis motor pool
+answers -> it eats.
 
-Tray menu -> "What the fly sees" opens the colour view of its world with
-live firing rates.
+Menu bar fly icon -> "What the fly sees" opens the color view of its world
+with live firing rates.
 
-## Run
+## Install
+
+The easy way: clone this repo, open it in a coding agent (Claude Code,
+Cursor, etc.), and say "set it up and launch it, per the README". The agent
+runs the manual steps below and sorts out whatever your machine is missing.
+
+Manual setup (macOS; needs Node 20+ and the Xcode command line tools for one
+small Swift helper):
 
 ```
 npm install
@@ -30,8 +38,12 @@ npm run launch           # start at normal priority via `open`
 ```
 
 Without brain data a labeled stub fakes the two rates behavior needs.
-Text-input walls need Accessibility permission; window edges work without.
-Primary display only. Quit from the fly menu bar item.
+Text-input landing spots need an Accessibility grant; window edges work
+without. Primary display only. Quit from the fly menu bar item.
+
+Optional hotkey: the app writes its pid to `/tmp/deskfly.pid` and toggles
+the viewer on SIGUSR2, so any hotkey tool can bind
+`kill -USR2 $(cat /tmp/deskfly.pid)` to open what the fly sees.
 
 ## Honesty notes, in one place
 
@@ -54,4 +66,5 @@ Primary display only. Quit from the fly menu bar item.
 Connectome: FlyWire public release 783 (CC BY-NC 4.0), fetched not committed;
 cite Dorkenwald et al. 2024, Schlegel et al. 2024 (annotations), Shiu et al.
 2024 (model constants, `brain/params.json`). Sprite photo sources and
-licenses: `reference/SOURCES.md`.
+licenses: `reference/SOURCES.md` (side view: CC BY-SA 4.0, Elena Regina).
+Code: MIT.
