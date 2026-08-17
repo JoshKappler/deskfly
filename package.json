@@ -14,5 +14,8 @@
   },
   "devDependencies": {
     "electron": "^43.4.0"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
   }
 }

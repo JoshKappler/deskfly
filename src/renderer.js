@@ -1,6 +1,7 @@
 const { ipcRenderer } = require('electron');
 const path = require('path');
 const { Fly } = require('./behavior.js');
+const { branchLedges } = require('./world.js');
 const { drawFly } = require('./sprite.js');
 const { loadPhotoFly } = require('./photofly.js');
 
@@ -27,10 +28,14 @@ function screenLedges() {
   ];
 }
 
+function withBranches(walls) {
+  return walls.concat(branchLedges(walls));
+}
+
 const env = {
   w: innerWidth,
   h: innerHeight,
-  ledges: screenLedges(),
+  ledges: withBranches(screenLedges()),
   food: [],
   cursor: { x: -1e4, y: -1e4, vx: 0, vy: 0 },
   brain: {
@@ -46,11 +51,9 @@ const env = {
 
 ipcRenderer.on('world', (_e, w) => { env.food = w.food || []; });
 setInterval(() => {
-  const perchDir = fly.perch ? fly.perch.ledge.dir : null;
-  const alt = fly.z * 26 + 2
-    + (perchDir === 'h' ? 34 : perchDir === 'v' ? 17 : 0) * (1 - fly.z);
   ipcRenderer.send('fly', {
-    x: fly.x, y: fly.y, heading: fly.heading, z: fly.z, alt, state: fly.state,
+    x: fly.x, y: fly.y, heading: fly.heading, z: fly.z,
+    alt: fly.alt, pitch: fly.pitch, state: fly.state,
   });
 }, 33);
 
@@ -60,7 +63,7 @@ ipcRenderer.on('perches', (_e, data) => {
     if (l.dir === 'h' && l.x1 - l.x0 >= 40) out.push(l);
     else if (l.dir === 'v' && l.y1 - l.y0 >= 40) out.push(l);
   }
-  env.ledges = out.concat(screenLedges());
+  env.ledges = withBranches(out.concat(screenLedges()));
 });
 
 let lastCursor = null;

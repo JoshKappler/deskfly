@@ -4,21 +4,24 @@ A housefly that lives on your screen, run by the real FlyWire connectome of
 an adult fruit fly brain: 139,255 neurons, 3.87M connections, simulated as a
 leaky integrate-and-fire network after Shiu et al. 2024.
 
-The desktop is its 3D world: the screen plane is a grass floor, every window
-edge stands on it as a line of trees it can land in, berries appear in the
-grass, and your cursor stalks it as a dark predator. That world is raycast
-into a spherical panorama and fed to the fly's own retinotopic photoreceptor
-map (11,118 cells placed from their real positions), so the optic lobe
-computes motion and looming from what the fly actually sees. Behavior is
-read out of the real command neurons: giant fiber (DNp01) fires -> escape
-takeoff away from the louder LC4/LPLC2 side; DNp09 -> walking bouts;
-DNa01/02 asymmetry -> steering; DNg11 -> grooming (articulated forelegs rub,
-then wipe the eyes, in side view on a treetop); MDN -> backing up; standing
-on food drives the labellar sugar neurons and the proboscis motor pool
-answers -> it eats.
+The desktop is its 3D world, an alternate reality of your actual desktop:
+the screen plane is a grass meadow, every window edge is a line of low-poly
+trees with landable branches, the screen borders are the forest ring around
+it, berries grow where food spawns, a pond reflects the sky, and your cursor
+prowls the meadow as a dark mound of earth. One three.js scene renders that
+world twice: a cube camera at the fly's position becomes the 360-degree
+luminance panorama its real retinotopic eye map receives (11,118 cells at
+their measured positions), and a perspective fly-cam shows you the same
+world from wherever it is, at its altitude, looking where it looks. The
+optic lobe computes motion and looming from that panorama; command neurons
+(giant fiber escape, DNp09 walking, DNa01/02 steering, DNg11 grooming, MDN
+backing, sugar cells and the proboscis motor pool for feeding) drive what
+the body does, on the desktop and in the world alike. It perches on
+treetops and branches, and grooms in side view with articulated forelegs.
 
-Menu bar fly icon -> "What the fly sees" opens the color view of its world
-with live firing rates.
+Menu bar fly icon -> "What the fly sees" opens the fly-cam, with a HUD
+(state, altitude, pitch, heading, live firing rates) and an inset showing
+the actual eye input.
 
 ## Install
 
@@ -51,8 +54,14 @@ the viewer on SIGUSR2, so any hotkey tool can bind
   (GABA/glutamate inhibitory). No plasticity, no neuromodulation.
 - The retina-to-lamina layer is truncated in FAFB, so luminance-change drive
   enters at L1-L5 and R7/R8, as rectified-contrast excitation.
+- Rendering is GPU rasterization (three.js), not path tracing; the pond and
+  berry reflections sample a live environment cubemap re-rendered from the
+  fly's position, so they show real scene content with approximate parallax.
+- The eye and the viewer render the same scene, wind-blown grass included.
+  Trees and branches are also physical (landable); rocks, flowers, bushes
+  and the pond are visible to the fly but intangible.
 - The sim runs at whatever fraction of real time fits ~25% of one core
-  (typically 0.15-0.35x); reactions are correspondingly delayed.
+  (typically 0.1-0.3x); reactions are correspondingly delayed.
 - Command neurons carry a weak Poisson "internal state" drive so spontaneous
   bouts exist; escape, steering direction, and feeding are sensory-driven.
 - Flight paths, landing mechanics and perch choice are body-level heuristics;
@@ -65,6 +74,6 @@ the viewer on SIGUSR2, so any hotkey tool can bind
 
 Connectome: FlyWire public release 783 (CC BY-NC 4.0), fetched not committed;
 cite Dorkenwald et al. 2024, Schlegel et al. 2024 (annotations), Shiu et al.
-2024 (model constants, `brain/params.json`). Sprite photo sources and
-licenses: `reference/SOURCES.md` (side view: CC BY-SA 4.0, Elena Regina).
-Code: MIT.
+2024 (model constants, `brain/params.json`). 3D rendering: three.js (MIT).
+Sprite photo sources and licenses: `reference/SOURCES.md` (side view:
+CC BY-SA 4.0, Elena Regina). Code: MIT.

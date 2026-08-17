@@ -4,6 +4,8 @@
 // Flight paths, landing mechanics and perch choice stay body-level
 // heuristics; without vision it falls back to timers plus a scripted loom.
 
+const { nearestTree } = require('./world.js');
+
 const TAU = Math.PI * 2;
 
 function rand(a, b) { return a + Math.random() * (b - a); }
@@ -11,7 +13,7 @@ function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function angNorm(a) { while (a > Math.PI) a -= TAU; while (a < -Math.PI) a += TAU; return a; }
 function lerp(a, b, t) { return a + (b - a) * t; }
 
-const KIND_WEIGHT = { input: 3.0, window: 2.2, screen: 1.0, ground: 0.5 };
+const KIND_WEIGHT = { input: 3.0, window: 2.2, branch: 2.6, screen: 1.0, ground: 0.5 };
 
 // drive thresholds (Hz per neuron above each group's own slow baseline)
 const TH = { gf: 25, walk: 2.5, groom: 2, feed: 2, mdn: 2 };
@@ -34,6 +36,9 @@ class Fly {
     this.vx = rand(-60, 60); this.vy = rand(-60, 60);
     this.heading = rand(0, TAU);
     this.z = 1;
+    this.alt = 24;
+    this.altTarget = 34;
+    this.pitch = 0;
     this.state = 'CRUISE';
     this.t = 0;
     this.stateDur = rand(3, 9);
@@ -100,6 +105,7 @@ class Fly {
 
     if (grounded && !this.refreshPerchLedge(env)) this.takeoff(env, false);
 
+    const altBefore = this.alt;
     switch (this.state) {
       case 'CRUISE': this.cruise(dt, env, brainLive); break;
       case 'SEEK': this.seek(dt, env); break;
@@ -113,6 +119,20 @@ class Fly {
     if (this.state !== 'FEED' && this.proboscis > 0) {
       this.proboscis = Math.max(0, this.proboscis - dt * 3);
     }
+
+    const airborne = this.state === 'CRUISE' || this.state === 'SEEK';
+    const climb = dt > 0 ? (this.alt - altBefore) / dt : 0;
+    const wantPitch = airborne
+      ? clamp(Math.atan2(climb, Math.max(60, Math.hypot(this.vx, this.vy))), -0.7, 0.7)
+      : 0;
+    this.pitch += (wantPitch - this.pitch) * Math.min(1, dt * 4);
+  }
+
+  perchAlt() {
+    if (!this.perch) return 2;
+    if (this.perch.alt !== undefined) return this.perch.alt;
+    const d = this.perch.ledge.dir;
+    return d === 'h' ? 30 : d === 'v' ? 14 : 2;
   }
 
   threat(env) {
@@ -137,6 +157,7 @@ class Fly {
     if (l.dir === 'ground') return true;
     for (const c of env.ledges) {
       if (c.dir !== l.dir) continue;
+      if ((c.kind === 'branch') !== (l.kind === 'branch')) continue;
       if (l.dir === 'h' && Math.abs(c.y - l.y) < 8 && c.x0 < l.x1 && c.x1 > l.x0) {
         this.perch.ledge = c; return true;
       }
@@ -181,6 +202,7 @@ class Fly {
     const a = this.heading + away * rand(1.6, 2.6);
     this.vx = Math.cos(a) * 420;
     this.vy = Math.sin(a) * 420;
+    this.altTarget = rand(36, 70);
   }
 
   cruise(dt, env, brainLive) {
@@ -203,7 +225,9 @@ class Fly {
       this.dartT = rand(0.25, 1.2);
       this.vx += rand(-150, 150);
       this.vy += rand(-130, 130);
+      if (Math.random() < 0.45) this.altTarget = rand(10, 64);
     }
+    this.alt += (this.altTarget - this.alt) * Math.min(1, dt * 1.1);
     const m = 80;
     if (this.x < m) ax += (m - this.x) * 10;
     if (this.x > env.w - m) ax -= (this.x - (env.w - m)) * 10;
@@ -228,14 +252,27 @@ class Fly {
     const c = env.cursor;
     const cands = [];
     for (const l of env.ledges) {
-      if (ledgeLen(l) < 40) continue;
-      const u = rand(0.12, 0.88);
+      if (l.kind !== 'branch' && ledgeLen(l) < 40) continue;
+      let u = rand(0.12, 0.88);
+      let alt;
+      if (l.kind === 'branch') {
+        alt = l.alt;
+      } else {
+        // snap wall perches to a real tree so the fly sits on a treetop
+        const t = nearestTree(l, ledgePoint(l, u).x, ledgePoint(l, u).y);
+        if (t) {
+          u = clamp(l.dir === 'h'
+            ? (t.x - l.x0) / ((l.x1 - l.x0) || 1)
+            : (t.y - l.y0) / ((l.y1 - l.y0) || 1), 0.05, 0.95);
+          alt = t.top;
+        }
+      }
       const pt = ledgePoint(l, u);
       if (Math.hypot(pt.x - c.x, pt.y - c.y) < 160) continue;
       const d = Math.hypot(pt.x - this.x, pt.y - this.y);
       if (d < 30) continue;
       const w = (KIND_WEIGHT[l.kind] || 1) / (1 + d / 500);
-      cands.push({ ledge: l, u, w });
+      cands.push({ ledge: l, u, w, alt });
     }
     // ground spots; food smells good (attraction heuristic, not a DN readout)
     for (let i = 0; i < 5; i++) {
@@ -247,6 +284,7 @@ class Fly {
       cands.push({
         ledge: { dir: 'ground', x: gx, y: gy, kind: 'ground' },
         u: 0,
+        alt: 2,
         w: (f ? 4.0 : KIND_WEIGHT.ground) / (1 + Math.hypot(gx - this.x, gy - this.y) / 500),
       });
     }
@@ -283,9 +321,11 @@ class Fly {
     this.vy += rand(-1, 1) * 40 * dt;
     this.x += this.vx * dt; this.y += this.vy * dt;
     this.faceVelocity(dt);
+    const wantAlt = this.perchAlt() + (far ? 14 : 3);
+    this.alt += (wantAlt - this.alt) * Math.min(1, dt * 2.5);
     if (!far && d < 4 && Math.hypot(this.vx, this.vy) < 55) {
       this.state = 'LAND'; this.t = 0;
-      this.landFrom = { x: this.x, y: this.y, h: this.heading };
+      this.landFrom = { x: this.x, y: this.y, h: this.heading, alt: this.alt };
     } else if (this.t > 9) {
       this.state = 'CRUISE'; this.t = 0; this.stateDur = rand(3, 8); this.perch = null;
     }
@@ -296,6 +336,7 @@ class Fly {
     const td = this.touchXY();
     this.x = lerp(this.landFrom.x, td.x, k);
     this.y = lerp(this.landFrom.y, td.y, k);
+    this.alt = lerp(this.landFrom.alt, this.perchAlt(), k);
     this.z = 1 - k;
     this.wingFold = k;
     const dir = this.ledgeHeading();
@@ -311,6 +352,7 @@ class Fly {
   perchIdle(dt, env, brainLive) {
     this.perchClock += dt;
     this.gaitPhase += dt * 0.9;
+    this.alt = this.perchAlt();
 
     const foodIdx = this.onFood(env);
     if (foodIdx >= 0 && this.clock - this.lastSugar > 0.5) {
@@ -347,7 +389,7 @@ class Fly {
   nearestWallAhead(env, dist) {
     const hx = Math.cos(this.heading), hy = Math.sin(this.heading);
     for (const l of env.ledges) {
-      if (l.dir === 'ground') continue;
+      if (l.dir === 'ground' || l.kind === 'branch') continue;
       const pt = l.dir === 'h'
         ? { x: clamp(this.x, l.x0, l.x1), y: l.y }
         : { x: l.x, y: clamp(this.y, l.y0, l.y1) };
@@ -362,6 +404,7 @@ class Fly {
     this.perchClock += dt;
     this.subT -= dt;
     this.gaitPhase += dt * 8;
+    this.alt = this.perchAlt();
     const l = this.perch.ledge;
     const backing = brainLive && this.drive.mdn > TH.mdn;
     const speed = backing ? -11 : 24;
@@ -386,8 +429,8 @@ class Fly {
       }
       if (this.onFood(env) >= 0) { this.state = 'PERCH'; return; }
     } else {
-      const len = Math.max(ledgeLen(l), 24);
-      const margin = 10 / len;
+      const len = Math.max(ledgeLen(l), 8);
+      const margin = Math.min(0.3, 10 / len);
       this.perch.u = clamp(this.perch.u + ((speed * dt) / len) * this.walkDir, margin, 1 - margin);
       if (this.perch.u <= margin + 1e-4 || this.perch.u >= 1 - margin - 1e-4) this.walkDir *= -1;
       const td = this.touchXY();
@@ -429,6 +472,7 @@ class Fly {
   }
 
   takeoff(env, escape) {
+    this.altTarget = escape ? rand(36, 70) : rand(14, 56);
     let dx, dy;
     if (escape) {
       if (env.brain.vision) {
@@ -456,6 +500,7 @@ class Fly {
     const k = clamp(this.t / (this.escapeFlag ? 0.12 : 0.22), 0, 1);
     this.wingFold = 1 - k;
     this.z = k;
+    this.alt = this.perchAlt() + k * 7;
     if (k >= 1) {
       this.vx = this.launchVx; this.vy = this.launchVy;
       this.state = 'CRUISE'; this.t = 0; this.stateDur = rand(3, 10);
@@ -488,9 +533,12 @@ class Fly {
       ? { ledge: { dir: 'h', x0: 0, x1: env.w, y: env.h / 2 + 6, kind: 'window' }, u: 0.5, side: -1 }
       : null;
     this.z = 0; this.wingFold = 1;
+    this.alt = this.perch ? 30 : 2;
+    this.pitch = 0;
     if (name === 'flight') {
       this.state = 'CRUISE'; this.z = 1; this.wingFold = 0;
       this.wingPhase = t * 135 * TAU; this.perch = null;
+      this.alt = 30;
     } else if (name === 'walk') {
       this.state = 'WALK'; this.gaitPhase = t * 8;
     } else if (name === 'groom' || name === 'sidegroom') {

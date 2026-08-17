@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; }
+    #gl { display: block; width: 100vw; height: 100vh; }
+    #hud {
+      position: fixed; left: 10px; top: 8px; color: #eef3f7;
+      font: 12px monospace; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+      white-space: pre; pointer-events: none;
+    }
+    #eye {
+      position: fixed; right: 10px; bottom: 10px; width: 270px; height: 68px;
+      image-rendering: pixelated; border: 1px solid rgba(255,255,255,0.35);
+      opacity: 0.9; pointer-events: none;
+    }
+    #eyelabel {
+      position: fixed; right: 12px; bottom: 80px; color: #cfd6dd;
+      font: 10px monospace; text-shadow: 0 1px 2px #000; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <div id="hud">waiting for the fly...</div>
+  <div id="eyelabel">actual eye input (360&deg; luminance)</div>
+  <canvas id="eye" width="180" height="45"></canvas>
+  <script src="./scene.js"></script>
+</body>
+</html>

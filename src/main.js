@@ -3,22 +3,31 @@ const { Worker } = require('worker_threads');
 const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const { World, renderPano } = require('./world.js');
+const { World } = require('./world.js');
 
 const HELPER = path.join(__dirname, '..', 'helper', 'perchscan');
 const BRAIN_DIR = path.join(__dirname, '..', 'brain');
-const PANO_W = 180;
-const PANO_H = 90;
+const PID_FILE = '/tmp/deskfly.pid';
 
 let win = null;
 let tray = null;
-let viewer = null;
+let sceneWin = null;
+let viewerShown = false;
 let brainWorker = null;
 let paused = false;
 let brainStatus = 'starting';
 let world = null;
-let flyState = { x: 400, y: 400, heading: 0, z: 1 };
+let screenEdges = [];
+let flyState = { x: 400, y: 400, heading: 0, z: 1, alt: 20, pitch: 0 };
 let lastRates = null;
+
+function alive(w) {
+  return w && !w.isDestroyed() && !w.webContents.isDestroyed();
+}
+
+function wSend(ch, payload) {
+  if (alive(win)) win.webContents.send(ch, payload);
+}
 
 function createWindow() {
   const d = screen.getPrimaryDisplay();
@@ -51,22 +60,65 @@ function createWindow() {
   }
   win.loadFile(path.join(__dirname, 'index.html'), { query });
   win.once('ready-to-show', () => win.showInactive());
+  win.on('closed', () => { win = null; });
 }
+
+// the 3D world lives here: hidden it still renders the fly's eye panorama,
+// shown it is the "what the fly sees" viewer
+function createSceneWindow() {
+  const d = screen.getPrimaryDisplay();
+  sceneWin = new BrowserWindow({
+    width: 980,
+    height: 560,
+    show: false,
+    title: 'deskfly: what the fly sees',
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      backgroundThrottling: false,
+    },
+  });
+  sceneWin.loadFile(path.join(__dirname, 'scene.html'));
+  sceneWin.webContents.on('did-finish-load', () => {
+    sceneWin.webContents.send('scene-init', { w: d.bounds.width, h: d.bounds.height });
+    sceneWin.webContents.send('scene-walls', world.walls);
+    sceneWin.webContents.send('scene-food', world.food);
+  });
+  sceneWin.on('close', (e) => {
+    if (!app.isQuitting) { e.preventDefault(); setViewer(false); }
+  });
+  sceneWin.on('closed', () => { sceneWin = null; });
+}
+
+function sceneSend(ch, payload) {
+  if (alive(sceneWin)) sceneWin.webContents.send(ch, payload);
+}
+
+function setViewer(on) {
+  viewerShown = on;
+  if (!sceneWin) return;
+  if (on) sceneWin.show();
+  else sceneWin.hide();
+  sceneSend('scene-shown', on);
+  updateTray();
+}
+
+function toggleViewer() { setViewer(!viewerShown); }
 
 function updateTray() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: paused ? 'Resume' : 'Pause', click: togglePause },
-    { label: 'What the fly sees', click: toggleViewer },
+    { label: viewerShown ? 'Hide what the fly sees' : 'What the fly sees', click: toggleViewer },
     { label: `Brain: ${brainStatus}`, enabled: false },
     { type: 'separator' },
-    { label: 'Quit', click: () => app.quit() },
+    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
   ]));
 }
 
 function togglePause() {
   paused = !paused;
-  if (win) win.webContents.send('pause', paused);
+  wSend('pause', paused);
   updateTray();
 }
 
@@ -78,26 +130,30 @@ function startTray() {
 
 function startCursorFeed() {
   setInterval(() => {
-    if (!win || paused) return;
+    if (!alive(win) || paused) return;
     const c = screen.getCursorScreenPoint();
     world.cursor = c;
-    win.webContents.send('cursor', c);
+    wSend('cursor', c);
+    sceneSend('scene-cursor', c);
   }, 33);
 }
 
 function startPerchScan() {
   if (!fs.existsSync(HELPER)) {
     console.log('perchscan helper missing (npm run build:helper); using screen edges only');
+    world.setLedges(screenEdges);
+    sceneSend('scene-walls', world.walls);
     return;
   }
   const scan = () => {
-    if (!win || paused) return;
+    if (!alive(win) || paused) return;
     execFile(HELPER, { timeout: 4000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
-      if (err || !win) return;
+      if (err || !alive(win)) return;
       try {
         const parsed = JSON.parse(out);
-        world.setLedges(parsed.ledges || []);
-        win.webContents.send('perches', parsed);
+        world.setLedges((parsed.ledges || []).concat(screenEdges));
+        wSend('perches', parsed);
+        sceneSend('scene-walls', world.walls);
       } catch {}
     });
   };
@@ -106,13 +162,14 @@ function startPerchScan() {
 }
 
 function sendWorld() {
-  if (win) win.webContents.send('world', { food: world.food });
+  wSend('world', { food: world.food });
+  sceneSend('scene-food', world.food);
 }
 
 function startFood() {
   const d = screen.getPrimaryDisplay();
   const spawn = () => {
-    if (world.food.length >= 3) return;
+    if (world.food.length >= 7) return;
     world.food.push({
       x: 60 + Math.random() * (d.bounds.width - 120),
       y: 80 + Math.random() * (d.bounds.height - 160),
@@ -129,40 +186,8 @@ function startFood() {
     else f.r = 4 + 3 * f.amount;
     sendWorld();
   });
-  spawn();
-  setInterval(spawn, 25000);
-}
-
-// the fly's visual world: rendered as a spherical panorama for the eye
-function startPanoFeed() {
-  setInterval(() => {
-    if (!brainWorker || paused) return;
-    const data = new Uint8Array(PANO_W * PANO_H);
-    renderPano(world, flyState, { w: PANO_W, h: PANO_H, data }, false);
-    brainWorker.postMessage({ type: 'pano', data: data.buffer, w: PANO_W, h: PANO_H }, [data.buffer]);
-  }, Math.round(1000 / 15));
-}
-
-function toggleViewer() {
-  if (viewer) { viewer.close(); return; }
-  viewer = new BrowserWindow({
-    width: 736,
-    height: 430,
-    title: 'deskfly: what the fly sees',
-    webPreferences: { nodeIntegration: true, contextIsolation: false },
-  });
-  viewer.loadFile(path.join(__dirname, 'viewer.html'));
-  viewer.on('closed', () => { viewer = null; });
-  const timer = setInterval(() => {
-    if (!viewer) { clearInterval(timer); return; }
-    viewer.webContents.send('viewstate', {
-      walls: world.walls,
-      food: world.food,
-      cursor: world.cursor,
-      fly: flyState,
-      brain: lastRates,
-    });
-  }, 66);
+  spawn(); spawn(); spawn();
+  setInterval(spawn, 12000);
 }
 
 function startBrain() {
@@ -174,21 +199,28 @@ function startBrain() {
     if (m.type === 'status') { brainStatus = m.text; updateTray(); console.log('[brain]', m.text); }
     if (m.type === 'rates') {
       lastRates = m;
+      sceneSend('scene-brain', m);
       if (process.env.DESKFLY_LOG_RATES && Date.now() - lastLog > 2000) {
         lastLog = Date.now();
         const r = Object.fromEntries(Object.entries(m.rates).map(([k, v]) => [k, +v.toFixed(1)]));
         console.log('[rates]', JSON.stringify(r), 'speed', m.simSpeed.toFixed(2),
           'active', m.activeN, 'fly', flyState.state,
-          Math.round(flyState.x) + ',' + Math.round(flyState.y));
+          Math.round(flyState.x) + ',' + Math.round(flyState.y), 'alt', Math.round(flyState.alt || 0));
       }
     }
-    if (win) win.webContents.send('brain', m);
+    wSend('brain', m);
   });
   brainWorker.on('error', (e) => { brainStatus = `error: ${e.message}`; updateTray(); });
   ipcMain.on('stim', (_e, s) => { if (brainWorker) brainWorker.postMessage({ type: 'stim', ...s }); });
   ipcMain.on('fly', (_e, s) => {
     flyState = s;
+    sceneSend('scene-fly', s);
     if (brainWorker) brainWorker.postMessage({ type: 'fly', ...s });
+  });
+  ipcMain.on('pano', (_e, data, w, h) => {
+    if (!brainWorker || paused) return;
+    const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    brainWorker.postMessage({ type: 'pano', data: buf, w, h }, [buf]);
   });
 }
 
@@ -202,7 +234,7 @@ function startCapture() {
     height: side,
   };
   setInterval(async () => {
-    if (!win) return;
+    if (!alive(win)) return;
     try {
       const img = await win.webContents.capturePage(r);
       fs.writeFileSync('/tmp/deskfly-cap.png', img.toPNG());
@@ -210,29 +242,37 @@ function startCapture() {
   }, 1500);
 }
 
-const PID_FILE = '/tmp/deskfly.pid';
-
 app.whenReady().then(() => {
   if (app.dock) app.dock.hide();
   try { fs.writeFileSync(PID_FILE, String(process.pid)); } catch {}
   process.on('SIGUSR2', toggleViewer); // external hotkey hook: toggles the viewer
+  for (const sig of ['SIGTERM', 'SIGINT']) {
+    process.on(sig, () => { app.isQuitting = true; app.quit(); });
+  }
   const d = screen.getPrimaryDisplay();
   world = new World(d.bounds.width, d.bounds.height);
+  screenEdges = [
+    { dir: 'h', x0: 0, x1: d.bounds.width, y: 25, kind: 'screen' },
+    { dir: 'h', x0: 0, x1: d.bounds.width, y: d.bounds.height - 3, kind: 'screen' },
+    { dir: 'v', y0: 30, y1: d.bounds.height - 6, x: 3, kind: 'screen' },
+    { dir: 'v', y0: 30, y1: d.bounds.height - 6, x: d.bounds.width - 3, kind: 'screen' },
+  ];
+  world.setLedges(screenEdges);
   createWindow();
+  createSceneWindow();
   startTray();
   startCursorFeed();
   startPerchScan();
   startBrain();
   startFood();
-  startPanoFeed();
   if (process.env.DESKFLY_CAPTURE) startCapture();
   if (process.env.DESKFLY_VIEWER_SHOT) {
-    setTimeout(toggleViewer, 3000);
+    setTimeout(() => setViewer(true), 3000);
     setTimeout(async () => {
-      if (!viewer) return;
-      const img = await viewer.webContents.capturePage();
+      if (!alive(sceneWin)) return;
+      const img = await sceneWin.webContents.capturePage();
       fs.writeFileSync(process.env.DESKFLY_VIEWER_SHOT, img.toPNG());
-    }, 9000);
+    }, 11000);
   }
 });
 
